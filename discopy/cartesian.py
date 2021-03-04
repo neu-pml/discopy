@@ -123,8 +123,8 @@ class Function(rigid.Box):
             raise TypeError(messages.type_err(Function, other))
         if len(self.cod) != len(other.dom):
             raise AxiomError(messages.does_not_compose(self, other))
-        return Function(self.dom, other.cod,
-                        lambda *vals: other(*tuplify(self(*vals))))
+        function = lambda *vals: other.function(*tuplify(self.function(*vals)))
+        return Function(self.dom, other.cod, function)
 
     def tensor(self, *others):
         """
@@ -143,8 +143,8 @@ class Function(rigid.Box):
         dom, cod = self.dom @ other.dom, self.cod @ other.cod
 
         def product(*vals):
-            vals0 = tuplify(self(*vals[:len(self.dom)]))
-            vals1 = tuplify(other(*vals[len(self.dom):]))
+            vals0 = tuplify(self.function(*vals[:len(self.dom)]))
+            vals1 = tuplify(other.function(*vals[len(self.dom):]))
             return untuplify(*(vals0 + vals1))
         return Function(dom, cod, product)
 
