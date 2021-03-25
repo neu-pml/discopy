@@ -114,7 +114,7 @@ def test_Circuit_from_tk():
 
 
 def test_ClassicalGate_to_tk():
-    post = ClassicalGate('post', n_bits_in=2, n_bits_out=0, data=[0, 0, 0, 1])
+    post = ClassicalGate('post', 2, 0, data=[0, 0, 0, 1])
     assert (post[::-1] >> Swap(bit, bit)).to_tk().post_processing\
         == post[::-1] >> Swap(bit, bit)
     circuit = sqrt(2) @ Ket(0, 0) >> H @ Rx(0) >> CX >> Measure(2) >> post
@@ -227,8 +227,15 @@ def test_QuantumGate():
 def test_ClassicalGate():
     f = ClassicalGate('f', 1, 1, [0, 1, 1, 0])
     assert repr(f.dagger())\
-        == "ClassicalGate('f', n_bits_in=1, n_bits_out=1, "\
-           "data=[0, 1, 1, 0]).dagger()"
+        == "ClassicalGate('f', bit, bit, data=[0, 1, 1, 0]).dagger()"
+
+
+def test_Digits():
+    with raises(TypeError):
+        Digits()
+    d = Digits(0, 1, 2, dim=3)
+    assert d.digits == [0, 1, 2]
+    assert d.dagger().dagger() == d
 
 
 def test_Bits():
@@ -265,8 +272,8 @@ def test_CircuitFunctor():
     x, y = rigid.Ty('x'), rigid.Ty('y')
     f = rigid.Box('f', x, y)
     ob, ar = {x: qubit, y: bit}, {f: Measure()}
-    assert repr(CircuitFunctor(ob, ar))\
-        == "CircuitFunctor(ob={Ty('x'): qubit, Ty('y'): bit}, "\
+    assert repr(Functor(ob, ar))\
+        == "circuit.Functor(ob={Ty('x'): qubit, Ty('y'): bit}, "\
            "ar={Box('f', Ty('x'), Ty('y')): Measure()})"
 
 
@@ -342,39 +349,18 @@ def test_testing_utils():
 
 
 def test_rot_grad():
+    from sympy import I, pi
     from sympy.abc import phi
-    import sympy as sy
-    for gate in (Rx, Ry, Rz, CU1, CRx, CRz):
-        # Compare the grad discopy vs sympy
-        op = gate(phi)
-        d_op_sym = sy.Matrix(_to_square_mat(op.eval().array)).diff(phi)
-        d_op_disco = sy.Matrix(
-            _to_square_mat(op.grad(phi, mixed=False).eval().array))
-        diff = sy.simplify(d_op_disco - d_op_sym).evalf()
-        assert np.isclose(float(diff.norm()), 0.)
+    assert CRz(phi).grad(phi, mixed=False)\
+        == (CRz(phi) >> Z @ Z @ scalar(0.5 * I * pi))\
+        + (CRz(phi) >> Id(1) @ Z @ scalar(-0.5 * I * pi))
+    assert CRx(phi).grad(phi, mixed=False)\
+        == (CRx(phi) >> Z @ X @ scalar(0.5 * I * pi))\
+        + (CRx(phi) >> Id(1) @ X @ scalar(-0.5 * I * pi))
 
 
-def test_rot_grad_mixed():
-    from sympy.abc import symbols
-    from sympy import Matrix
-
-    z = symbols('z', real=True)
-    random_values = [0., 1., 0.123, 0.321, 1.234]
-
-    for gate in (Rx, Ry, Rz):
-        qubits = 1 if gate in (Rx, Ry, Rz) else 2
-        cq_shape = (4, 4) if qubits == 1 else (16, 16)
-        v1 = Matrix((gate(z).eval().conjugate() @ gate(z).eval())
-                    .array.reshape(*cq_shape)).diff(z)
-        v2 = Matrix(gate(z).grad(z).eval(mixed=True).array.reshape(*cq_shape))
-
-        for random_value in random_values:
-            v1_sub = v1.subs(z, random_value).evalf()
-            v2_sub = v2.subs(z, random_value).evalf()
-
-            difference = (v1_sub - v2_sub).norm()
-            assert np.isclose(float(difference), 0.)
-
+def test_rot_grad_NotImplemented():
+    from sympy.abc import z
     for gate in (CRx, CRz, CU1):
         with raises(NotImplementedError):
             gate(z).grad(z, mixed=True)
@@ -475,3 +461,10 @@ def test_real_amp_ansatz():
     assert real_amp_ansatz(np.zeros((2, 2)), entanglement='circular') == c
     c = rys_layer >> step >> step
     assert real_amp_ansatz(np.zeros((3, 2)), entanglement='circular') == c
+
+
+def test_Controlled():
+    with raises(TypeError):
+        Controlled(None)
+    with raises(NotImplementedError):
+        Controlled(X, distance=-1)

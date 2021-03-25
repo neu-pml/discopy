@@ -13,9 +13,8 @@ Implements dagger monoidal functors into tensors.
 
 import numpy
 
-from discopy import messages, monoidal, rigid, config
+from discopy import cat, config, messages, monoidal, rigid
 from discopy.cat import AxiomError
-from discopy.monoidal import Sum
 from discopy.rigid import Ob, Ty, Cup, Cap
 
 
@@ -212,7 +211,7 @@ class Tensor(rigid.Box):
         return Tensor(self.cod, self.dom, Tensor.np.conjugate(array))
 
     @staticmethod
-    def id(dom):
+    def id(dom=Dim(1)):
         from numpy import prod
         return Tensor(dom, dom, Tensor.np.identity(int(prod(dom))))
 
@@ -280,6 +279,36 @@ class Tensor(rigid.Box):
         return self.map(lambda x:
                         getattr(x, "diff", lambda _: 0)(var, **params))
 
+    def jacobian(self, variables, **params):
+        """
+        Jacobian with respect to :code:`variables`.
+
+        Parameters
+        ----------
+        variables : List[sympy.Symbol]
+            Differentiated variables.
+
+        Returns
+        -------
+        tensor : Tensor
+            with :code:`tensor.dom == self.dom`
+            and :code:`tensor.cod == Dim(len(variables)) @ self.cod`.
+
+        Examples
+        --------
+        >>> from sympy.abc import x, y, z
+        >>> vector = Tensor(Dim(1), Dim(2), [x ** 2, y * z])
+        >>> vector.jacobian([x, y, z])
+        Tensor(dom=Dim(1), cod=Dim(3, 2), array=[2.0*x, 0, 0, 1.0*z, 0, 1.0*y])
+        """
+        dim = Dim(len(variables) or 1)
+        result = Tensor.zeros(self.dom, dim @ self.cod)
+        for i, var in enumerate(variables):
+            onehot = numpy.zeros(dim or (1, ))
+            onehot[i] = 1
+            result += Tensor(Dim(1), dim, onehot) @ self.grad(var)
+        return result
+
     def lambdify(self, *symbols, **kwargs):
         from sympy import lambdify
         array = lambdify(
@@ -313,7 +342,11 @@ class Functor(rigid.Functor):
                 if isinstance(obj, rigid.Ob) and obj.z != 0:
                     obj = type(obj)(obj.name)  # sets z=0
                 result = self.ob[type(diagram)(obj)]
-                return result if isinstance(result, Dim) else Dim(result)
+                if isinstance(result, int):
+                    result = Dim(result)
+                if not isinstance(result, Dim):
+                    result = Dim.upgrade(result)
+                return result
             return Dim(1).tensor(*map(obj_to_dim, diagram.objects))
         if isinstance(diagram, Cup):
             return Tensor.cups(self(diagram.dom[:1]), self(diagram.dom[1:]))
@@ -453,10 +486,39 @@ class Diagram(rigid.Diagram):
         if var not in self.free_symbols:
             return self.sum([], self.dom, self.cod)
         left, box, right, tail = tuple(self.layers[0]) + (self[1:], )
-
         t1 = self.id(left) @ box.grad(var, **params) @ self.id(right) >> tail
         t2 = self.id(left) @ box @ self.id(right) >> tail.grad(var, **params)
         return t1 + t2
+
+    def jacobian(self, variables, **params):
+        """
+        Diagrammatic jacobian with respect to :code:`variables`.
+
+        Parameters
+        ----------
+        variables : List[sympy.Symbol]
+            Differentiated variables.
+
+        Returns
+        -------
+        tensor : Tensor
+            with :code:`tensor.dom == self.dom`
+            and :code:`tensor.cod == Dim(len(variables)) @ self.cod`.
+
+        Examples
+        --------
+        >>> from sympy.abc import x, y, z
+        >>> vector = Box("v", Dim(1), Dim(2), [x ** 2, y * z])
+        >>> vector.jacobian([x, y, z]).eval()
+        Tensor(dom=Dim(1), cod=Dim(3, 2), array=[2.0*x, 0, 0, 1.0*z, 0, 1.0*y])
+        """
+        dim = Dim(len(variables) or 1)
+        result = Sum([], self.dom, dim @ self.cod)
+        for i, var in enumerate(variables):
+            onehot = numpy.zeros(dim or (1, ))
+            onehot[i] = 1
+            result += Box(var, Dim(1), dim, onehot) @ self.grad(var)
+        return result
 
     @staticmethod
     def spiders(n_legs_in, n_legs_out, dim):
@@ -489,6 +551,9 @@ class Diagram(rigid.Diagram):
 
 class Id(rigid.Id, Diagram):
     """ Identity tensor.Diagram """
+    def __init__(self, dom=Dim()):
+        rigid.Id.__init__(self, dom)
+        Diagram.__init__(self, dom, dom, [], [], layers=cat.Id(dom))
 
 
 class Sum(monoidal.Sum, Diagram):
@@ -560,7 +625,6 @@ class Spider(Box):
         :align: center
     """
     def __init__(self, n_legs_in, n_legs_out, dim):
-        import numpy
         dim = dim if isinstance(dim, Dim) else Dim(dim)
         if len(dim) > 1:
             raise ValueError(

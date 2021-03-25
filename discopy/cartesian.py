@@ -149,7 +149,7 @@ class Function(rigid.Box):
         return Function(dom, cod, product)
 
     @staticmethod
-    def id(dom):
+    def id(dom=0):
         """
         Implements the identity function on 'dom' inputs.
 
@@ -183,7 +183,7 @@ class Diagram(rigid.Diagram):
             len(old.dom), len(old.cod), old.boxes, old.offsets, old.layers)
 
     @staticmethod
-    def id(dom):
+    def id(dom=0):
         """
         >>> Diagram.id(2)
         Id(2)
@@ -266,6 +266,8 @@ class Box(rigid.Box, Diagram):
             repr(self.name), len(self.dom), len(self.cod),
             ', function=' + repr(self.function) if self.function else '',
             ', data=' + repr(self.data) if self.data else '')
+
+    __call__ = Diagram.__call__
 
 
 class Swap(Diagram):

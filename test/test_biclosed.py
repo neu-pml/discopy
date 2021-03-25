@@ -17,14 +17,14 @@ def test_Under():
 
 
 def test_Diagram():
-    x, y = Ty('x'), Ty('y')
+    x, y, z = Ty('x'), Ty('y'), Ty('z')
     assert Diagram.id(x) == Id(x)
-    assert Diagram.ba(x, x >> y) == BA(x >> y)
-    assert Diagram.fa(x << y, y) == FA(x << y)
-    with raises(AxiomError):
-        Diagram.ba(x, y >> x)
-    with raises(AxiomError):
-        Diagram.fa(y << x, y)
+    assert Diagram.ba(x, y) == BA(x >> y)
+    assert Diagram.fa(x, y) == FA(x << y)
+    assert Diagram.fc(x, y, z) == FC(x << y, y << z)
+    assert Diagram.bc(x, y, z) == BC(x >> y, y >> z)
+    assert Diagram.fx(x, y, z) == FX(x << y, z >> y)
+    assert Diagram.bx(x, y, z) == BX(y << x, y >> z)
 
 
 def test_BA():
@@ -42,20 +42,55 @@ def test_FA():
 
 
 def test_FC():
-    x, y = Ty('x'), Ty('y')
+    x, y, z = Ty('x'), Ty('y'), Ty('z')
     with raises(TypeError):
         FC(x >> y, y >> x)
     with raises(TypeError):
         FC(x << y, y >> x)
+    with raises(TypeError):
+        FC(x << y, z << y)
+
+
+def test_BC():
+    x, y, z = Ty('x'), Ty('y'), Ty('z')
+    with raises(TypeError):
+        BC(x << y, y << x)
+    with raises(TypeError):
+        BC(x >> y, y << x)
+    with raises(TypeError):
+        BC(x >> y, z >> y)
+
+
+def test_FX():
+    x, y, z = Ty('x'), Ty('y'), Ty('z')
+    with raises(TypeError):
+        FX(x >> y, y >> x)
+    with raises(TypeError):
+        FX(x << y, y << x)
+    with raises(TypeError):
+        FX(x << y, y >> x)
+
+
+def test_BX():
+    x, y, z = Ty('x'), Ty('y'), Ty('z')
+    with raises(TypeError):
+        BX(x >> y, y >> x)
+    with raises(TypeError):
+        BX(x << y, y << x)
+    with raises(TypeError):
+        BX(x << y, y >> x)
 
 
 def test_Functor():
-    x, y = Ty('x'), Ty('y')
+    x, y, z = Ty('x'), Ty('y'), Ty('z')
     f = Box('f', x, y)
     IdF = Functor(lambda x: x, lambda f: f)
     assert IdF(x >> y << x) == x >> y << x
     assert IdF(Curry(f)) == Curry(f)
     assert IdF(FC(x << y, y << x)) == FC(x << y, y << x)
+    assert IdF(BC(x >> y, y >> x)) == BC(x >> y, y >> x)
+    assert IdF(FX(x << y, z >> y)) == FX(x << y, z >> y)
+    assert IdF(BX(y << x, y >> z)) == BX(y << x, y >> z)
 
 
 def test_biclosed2rigid():
@@ -73,3 +108,11 @@ def test_biclosed2rigid():
         == rigid.Id(y_) @ rigid.Cap(x_.r, x_)
     assert biclosed2rigid(FC(x << y, y << x))\
         == rigid.Id(x_) @ rigid.Cup(y_.l, y_) @ rigid.Id(x_.l)
+    assert biclosed2rigid(BC(x >> y, y >> x))\
+        == rigid.Id(x_.r) @ rigid.Cup(y_, y_.r) @ rigid.Id(x_)
+    assert biclosed2rigid(FX(x << y, x >> y))\
+        == rigid.Id(x_) @ rigid.Swap(y_.l, x_.r) @ Id(y_) >>\
+        rigid.Swap(x_, x_.r) @ rigid.Cup(y_.l, y_)
+    assert biclosed2rigid(BX(y << x, y >> x))\
+        == rigid.Id(y_) @ rigid.Swap(x_.l, y_.r) @ Id(x_) >>\
+        rigid.Cup(y_, y_.r) @ rigid.Swap(x_.l, x_)
