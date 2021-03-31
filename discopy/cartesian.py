@@ -125,15 +125,8 @@ class Function(rigid.Box):
             raise TypeError(messages.type_err(Function, other))
         if len(self.cod) != len(other.dom):
             raise AxiomError(messages.does_not_compose(self, other))
-        if isinstance(self.function, compose):
-            self_func = self.function
-        else:
-            self_func = compose(tuplify, self.function)
-        if isinstance(other.function, compose):
-            other_func = other.function
-        else:
-            other_func = lambda vals: other.function(*vals)
-        function = compose(other_func, self_func)
+        function = compose(lambda vals: other.function(*vals), tuplify,
+                           self.function)
         return Function(self.dom, other.cod, function)
 
     def tensor(self, *others):
