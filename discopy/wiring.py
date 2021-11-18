@@ -46,6 +46,9 @@ class Wiring(ABC, monoidal.Box):
     def dagger(self):
         pass
 
+    def merge_wires(self):
+        pass
+
 class Id(Wiring):
     """ Empty wiring diagram in a free dagger PROP. """
     def __init__(self, dom):
@@ -74,6 +77,13 @@ class Id(Wiring):
     def dagger(self):
         return Id(self.dom)
 
+    def merge_dom(self, wires=0):
+        assert wires <= len(self.dom)
+        self._dom = PRO(wires)
+
+    def merge_cod(self, wires=0):
+        self.merge_dom(wires)
+
 class Box(Wiring):
     """ Implements boxes in wiring diagrams. """
     def __init__(self, name, dom, cod, **params):
@@ -97,6 +107,14 @@ class Box(Wiring):
         else:
             name = self.name + '†'
         return Box(name, self.cod, self.dom, data=self.data)
+
+    def merge_dom(self, wires=0):
+        assert wires <= len(self.dom)
+        self._dom = PRO(wires)
+
+    def merge_cod(self, wires=0):
+        assert wires <= len(self.cod)
+        self._cod = PRO(wires)
 
 def _flatten_arrows(arrows):
     for arr in arrows:
@@ -126,6 +144,33 @@ class Sequential(Wiring):
 
     def dagger(self):
         return Sequential(reversed([f.dagger() for f in self.arrows]))
+
+    def merge_wires(self):
+        for f, g in zip(self.arrows, self.arrows[1:]):
+            fs = f.factors if isinstance(f, Parallel) else [f]
+            gs = g.factors if isinstance(g, Parallel) else [g]
+
+            l = r = 0
+            i = j = 0
+            wires = set()
+            for _ in range(len(f.cod)):
+                if i >= len(fs[l].cod):
+                    l += 1
+                    i = 0
+                if j >= len(gs[r].dom):
+                    r += 1
+                    j = 0
+                wires.add((l, r))
+                i += 1
+                j += 1
+
+            for k, factor in enumerate(fs):
+                factor.merge_cod(len({(x, y) for x, y in wires if x == k}))
+            for k, factor in enumerate(gs):
+                factor.merge_dom(len({(x, y) for x, y in wires if y == k}))
+
+        for f in self.arrows:
+            f.merge_wires()
 
 def _flatten_factors(factors):
     for f in factors:
@@ -158,6 +203,16 @@ class Parallel(Wiring):
     def dagger(self):
         return Parallel([f.dagger() for f in self.factors])
 
+    def merge_wires(self):
+        dom, cod = Ty(), Ty()
+        for f in self.factors:
+            f.merge_wires()
+            dom = dom @ f.dom
+            cod = cod @ f.cod
+
+        self._dom = dom
+        self._cod = cod
+
 class Functor(monoidal.Functor):
     def __init__(self, ob, ar, ob_factory=Ty, ar_factory=Box):
         super().__init__(ob, ar, ob_factory, ar_factory)
@@ -184,3 +239,9 @@ class WiringFunctor(Functor):
         ar = lambda f: Box(f.name, PRO(len(f.dom)), PRO(len(f.cod)),
                            data=f.data)
         super().__init__(ob, ar, ob_factory=PRO, ar_factory=Box)
+
+    def __call__(self, diagram):
+        result = super().__call__(diagram)
+        if isinstance(result, Wiring):
+            result.merge_wires()
+        return result
