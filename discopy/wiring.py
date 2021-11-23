@@ -11,6 +11,17 @@ import itertools
 from discopy import cat, messages, monoidal
 from discopy.monoidal import PRO, Ty
 
+def _dagger_falg(diagram):
+    if isinstance(diagram, Box):
+        if diagram.name[-1] == '†':
+            name = diagram.name[:-1]
+        else:
+            name = diagram.name + '†'
+        return Box(name, diagram.cod, diagram.dom, data=diagram.data)
+    if isinstance(diagram, Sequential):
+        return Sequential(reversed(diagram.arrows))
+    return diagram
+
 class Wiring(ABC, monoidal.Box):
     """
     Implements wiring diagrams in free dagger PROPs.
@@ -42,9 +53,8 @@ class Wiring(ABC, monoidal.Box):
     def __matmul__(self, other):
         return self.tensor(other)
 
-    @abstractmethod
     def dagger(self):
-        pass
+        return self.collapse(_dagger_falg)
 
     def merge_wires(self):
         pass
@@ -74,9 +84,6 @@ class Id(Wiring):
             return Id(self.dom @ other.dom)
         return super().tensor(other)
 
-    def dagger(self):
-        return Id(self.dom)
-
     def merge_dom(self, wires=0):
         assert wires <= len(self.dom)
         self._dom = PRO(wires)
@@ -100,13 +107,6 @@ class Box(Wiring):
 
     def collapse(self, falg):
         return falg(self)
-
-    def dagger(self):
-        if self.name[-1] == '†':
-            name = self.name[:-1]
-        else:
-            name = self.name + '†'
-        return Box(name, self.cod, self.dom, data=self.data)
 
     def merge_dom(self, wires=0):
         assert wires <= len(self.dom)
@@ -141,9 +141,6 @@ class Sequential(Wiring):
     def collapse(self, falg):
         return falg(functools.reduce(lambda f, g: f >> g,
                                      [f.collapse(falg) for f in self.arrows]))
-
-    def dagger(self):
-        return Sequential(reversed([f.dagger() for f in self.arrows]))
 
     def merge_wires(self):
         for f, g in zip(self.arrows, self.arrows[1:]):
@@ -199,9 +196,6 @@ class Parallel(Wiring):
     def collapse(self, falg):
         return falg(functools.reduce(lambda f, g: f @ g,
                                      [f.collapse(falg) for f in self.factors]))
-
-    def dagger(self):
-        return Parallel([f.dagger() for f in self.factors])
 
     def merge_wires(self):
         dom, cod = Ty(), Ty()
