@@ -59,6 +59,13 @@ class Wiring(ABC, monoidal.Box):
     def merge_wires(self):
         pass
 
+    def draw(self, *args, **kwargs):
+        def ar(f):
+            return monoidal.Box(f.name, f.dom, f.cod, data=f.data)
+        drawing_functor = Functor(lambda t: t, ar, ob_factory=Ty,
+                                  ar_factory=monoidal.Box)
+        drawing_functor(self).draw(*args, **kwargs)
+
 class Id(Wiring):
     """ Empty wiring diagram in a free dagger PROP. """
     def __init__(self, dom):
