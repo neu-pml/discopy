@@ -110,13 +110,7 @@ def _flatten_arrows(arrows):
 class Sequential(Wiring):
     """ Sequential composition in a wiring diagram. """
     def __init__(self, arrows, dom=None, cod=None):
-        arrows = list(itertools.chain(*_flatten_arrows(arrows)))
-        for f, g in zip(arrows, arrows[1:]):
-            if isinstance(f, Wiring) and isinstance(g, Wiring) and\
-               f.cod != g.dom:
-                raise cat.AxiomError(messages.does_not_compose(f, g))
-        self.arrows = arrows
-
+        self.arrows = list(itertools.chain(*_flatten_arrows(arrows)))
         if dom is None:
             dom = self.arrows[0].dom
         if cod is None:
