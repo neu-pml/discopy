@@ -102,7 +102,7 @@ def _flatten_arrows(arrows):
     for arr in arrows:
         if isinstance(arr, Id):
             continue
-        elif isinstance(arr, Sequential):
+        if isinstance(arr, Sequential):
             yield arr.arrows
         else:
             yield [arr]
