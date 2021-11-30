@@ -9,7 +9,7 @@ import functools
 import itertools
 
 from discopy import cat, messages, monoidal
-from discopy.monoidal import PRO, Ty
+from discopy.monoidal import PRO, Sum, Ty
 
 def _dagger_falg(diagram):
     if isinstance(diagram, Box):
@@ -38,17 +38,41 @@ class Wiring(ABC, monoidal.Box):
     def id(dom):
         return Id(dom)
 
-    def then(self, other):
+    def then(self, *others):
+        """
+        Implements the sequential composition of wiring diagrams.
+        """
+        if len(others) != 1 or any(isinstance(other, Sum) for other in others):
+            return monoidal.Diagram.then(self, *others)
+        other = others[0]
+        if not isinstance(other, Wiring):
+            raise TypeError(messages.type_err(Wiring, other))
         if self.cod != other.dom:
             raise cat.AxiomError(messages.does_not_compose(self, other))
-        if isinstance(other, Id):
-            return self
-        return Sequential([self, other])
 
-    def tensor(self, other):
-        if isinstance(other, Id) and not other.dom:
-            return self
-        return Parallel([self, other])
+        arrows = [f for f in (self,) + others if not isinstance(f, Id)]
+        if not arrows:
+            return Id(self.dom)
+        if len(arrows) == 1:
+            return arrows[0]
+        return Sequential(arrows)
+
+    def tensor(self, *others):
+        """
+        Implements the tensor product of wiring diagrams.
+        """
+        if len(others) != 1 or any(isinstance(other, Sum) for other in others):
+            return monoidal.Diagram.tensor(self, *others)
+        other = others[0]
+        if not isinstance(other, Wiring):
+            raise TypeError(messages.type_err(Wiring, other))
+
+        factors = [f for f in (self,) + others if len(f.dom) or len(f.cod)]
+        if not factors:
+            return Id(Ty())
+        if len(factors) == 1:
+            return factors[0]
+        return Parallel(factors)
 
     def __matmul__(self, other):
         return self.tensor(other)
