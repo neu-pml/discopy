@@ -183,6 +183,19 @@ class Sequential(Wiring):
         return falg(functools.reduce(lambda f, g: f >> g,
                                      [f.collapse(falg) for f in self.arrows]))
 
+    def then(self, *others):
+        if len(others) != 1 or any(isinstance(other, Sum) for other in others):
+            return monoidal.Diagram.then(self, *others)
+        other = others[0]
+        if not isinstance(other, Wiring):
+            raise TypeError(messages.type_err(Wiring, other))
+        if self.cod != other.dom:
+            raise cat.AxiomError(messages.does_not_compose(self, other))
+
+        last = self.arrows[-1] >> other
+        last = last.arrows if isinstance(last, Sequential) else [last]
+        return Sequential(self.arrows[:-1] + last)
+
     def merge_wires(self):
         for f, g in zip(self.arrows, self.arrows[1:]):
             fs = f.factors if isinstance(f, Parallel) else [f]
