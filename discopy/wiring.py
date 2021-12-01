@@ -251,6 +251,45 @@ class Parallel(Wiring):
         return falg(functools.reduce(lambda f, g: f @ g,
                                      [f.collapse(falg) for f in self.factors]))
 
+    def then(self, *others):
+        if len(others) != 1 or any(isinstance(other, Sum) for other in others):
+            return monoidal.Diagram.tensor(self, *others)
+        other = others[0]
+
+        if self.cod != other.dom:
+            raise cat.AxiomError(messages.does_not_compose(self, other))
+
+        if isinstance(other, Parallel):
+            wires = {}
+
+            # Map the wires of the other's domain
+            w = 0
+            for g in other.factors:
+                for k in range(len(g.dom)):
+                    wires[w + k] = g
+                w += len(g.dom)
+
+            # Kwisatz Haderach: shortener of the wires
+            fs = []
+            gs = []
+            w = 0
+            for f in self.factors:
+                if isinstance(f, Id):
+                    for k in range(len(f.cod)):
+                        if wires[w + k] not in fs:
+                            fs.append(wires[w + k])
+                            gs.append(Id(wires[w + k].cod))
+                else:
+                    fs.append(f)
+                    if wires[w] not in gs:
+                        gs.append(wires[w])
+                w += len(f.cod)
+            fs = functools.reduce(lambda f1, f2: f1 @ f2, fs, Id(Ty()))
+            gs = functools.reduce(lambda g1, g2: g1 @ g2, gs, Id(Ty()))
+            return Wiring.then(fs, gs)
+
+        super().then(other)
+
     def merge_wires(self):
         dom, cod = Ty(), Ty()
         for f in self.factors:
