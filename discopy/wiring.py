@@ -103,12 +103,22 @@ class Id(Wiring):
     def collapse(self, falg):
         return falg(self)
 
-    def then(self, other):
+    def then(self, *others):
+        if len(others) != 1 or any(isinstance(other, Sum) for other in others):
+            return monoidal.Diagram.tensor(self, *others)
+        other = others[0]
+
         if self.cod != other.dom:
             raise cat.AxiomError(messages.does_not_compose(self, other))
         return other
 
-    def tensor(self, other):
+    def tensor(self, *others):
+        if len(others) != 1 or any(isinstance(other, Sum) for other in others):
+            return monoidal.Diagram.tensor(self, *others)
+        other = others[0]
+        if not isinstance(other, Wiring):
+            raise TypeError(messages.type_err(Wiring, other))
+
         if not self.dom:
             return other
         if isinstance(other, Id):
