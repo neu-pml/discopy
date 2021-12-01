@@ -321,14 +321,19 @@ class Functor(monoidal.Functor):
         return super().__call__(diagram)
 
 class WiringFunctor(Functor):
-    def __init__(self):
-        ob = lambda t: PRO(len(t))
-        ar = lambda f: Box(f.name, PRO(len(f.dom)), PRO(len(f.cod)),
-                           data=f.data)
-        super().__init__(ob, ar, ob_factory=PRO, ar_factory=Box)
+    def __init__(self, typed=False):
+        self._typed = typed
+        if self._typed:
+            ob = lambda t: t
+            ar = lambda f: Box(f.name, f.dom, f.cod, data=f.data)
+        else:
+            ob = lambda t: PRO(len(t))
+            ar = lambda f: Box(f.name, PRO(len(f.dom)), PRO(len(f.cod)),
+                               data=f.data)
+        super().__init__(ob, ar, ob_factory=Ty, ar_factory=Box)
 
     def __call__(self, diagram):
         result = super().__call__(diagram)
-        if isinstance(result, Wiring):
+        if isinstance(result, Wiring) and not self._typed:
             result.merge_wires()
         return result
