@@ -232,9 +232,10 @@ class Sequential(Wiring):
 
 def _flatten_factors(factors):
     for f in factors:
-        if isinstance(f, Id) and not f.dom:
-            continue
-        if isinstance(f, Parallel):
+        if isinstance(f, Id):
+            for ob in f.dom:
+                yield Id(Ty(ob))
+        elif isinstance(f, Parallel):
             yield f.factors
         else:
             yield [f]
