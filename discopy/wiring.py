@@ -265,9 +265,10 @@ class Parallel(Wiring):
             # Map the wires of the other's domain
             w = 0
             for g in other.factors:
-                for k in range(len(g.dom)):
+                g_wires = max(len(g.dom), 1)
+                for k in range(g_wires):
                     wires[w + k] = g
-                w += len(g.dom)
+                w += g_wires
 
             # Kwisatz Haderach: shortener of the wires
             fs = []
