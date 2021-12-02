@@ -285,35 +285,28 @@ class Parallel(Wiring):
             raise cat.AxiomError(messages.does_not_compose(self, other))
 
         if isinstance(other, Parallel):
-            wires = {}
+            adjacency = other.wire_adjacency(self)
 
-            # Map the wires of the other's domain
-            w = 0
-            for g in other.factors:
-                g_wires = max(len(g.dom), 1)
-                for k in range(g_wires):
-                    wires[w + k] = g
-                w += g_wires
+            f_factors = []
+            g_factors = []
+            used = set()
+            for j, g in enumerate(other.factors):
+                incoming = np.flatnonzero(adjacency[:, j])
+                fs = [self.factors[i] for i in incoming]
 
-            # Kwisatz Haderach: shortener of the wires
-            fs = []
-            gs = []
-            w = 0
-            for f in self.factors:
-                if isinstance(f, Id):
-                    for k in range(len(f.cod)):
-                        if wires[w + k] not in fs:
-                            fs.append(wires[w + k])
-                            gs.append(Id(wires[w + k].cod))
+                if all(np.count_nonzero(adjacency[i, :]) == 1 for i
+                       in incoming):
+                    f_factors.append(reduce_parallel(fs) >> g)
+                    g_factors.append(Id(g.cod))
                 else:
-                    fs.append(f)
-                    if wires[w] not in gs:
-                        gs.append(wires[w])
-                w += len(f.cod)
+                    f_factors += [f for i, f in zip(incoming, fs)
+                                  if i not in used]
+                    g_factors.append(g)
+                used |= set(incoming)
 
-            fs = functools.reduce(lambda f1, f2: f1 @ f2, fs, Id(Ty()))
-            gs = functools.reduce(lambda g1, g2: g1 @ g2, gs, Id(Ty()))
-            return Wiring.then(fs, gs)
+            f_factors = reduce_parallel(f_factors)
+            g_factors = reduce_parallel(g_factors)
+            return Wiring.then(f_factors, g_factors)
 
         return super().then(other)
 
