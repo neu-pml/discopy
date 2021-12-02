@@ -7,9 +7,18 @@ Implements wiring diagrams as a free dagger PROP.
 from abc import ABC, abstractmethod
 import functools
 import itertools
+import numpy as np
 
 from discopy import cat, messages, monoidal
 from discopy.monoidal import PRO, Sum, Ty
+
+def reduce_sequential(arrows):
+    return functools.reduce(lambda f, g: f >> g, arrows)
+
+def reduce_parallel(factors, ident=None):
+    if ident is None:
+        ident = Id(Ty())
+    return functools.reduce(lambda x, y: x @ y, factors, ident)
 
 def _dagger_falg(diagram):
     if isinstance(diagram, Box):
@@ -19,7 +28,7 @@ def _dagger_falg(diagram):
             name = diagram.name + '†'
         return Box(name, diagram.cod, diagram.dom, data=diagram.data)
     if isinstance(diagram, Sequential):
-        return Sequential(reversed(diagram.arrows))
+        return reduce_sequential(reversed(diagram.arrows))
     return diagram
 
 class Wiring(ABC, monoidal.Box):
@@ -180,8 +189,7 @@ class Sequential(Wiring):
         return "Sequential(arrows={})".format(repr(self.arrows))
 
     def collapse(self, falg):
-        return falg(functools.reduce(lambda f, g: f >> g,
-                                     [f.collapse(falg) for f in self.arrows]))
+        return falg(Sequential([f.collapse(falg) for f in self.arrows]))
 
     def then(self, *others):
         if len(others) != 1 or any(isinstance(other, Sum) for other in others):
@@ -225,9 +233,10 @@ class Sequential(Wiring):
 
 def _flatten_factors(factors):
     for f in factors:
-        if isinstance(f, Id) and not f.dom:
-            continue
-        if isinstance(f, Parallel):
+        if isinstance(f, Id):
+            for ob in f.dom:
+                yield Id(Ty(ob))
+        elif isinstance(f, Parallel):
             yield f.factors
         else:
             yield [f]
@@ -237,19 +246,35 @@ class Parallel(Wiring):
     def __init__(self, factors, dom=None, cod=None):
         self.factors = list(itertools.chain(*_flatten_factors(factors)))
         if dom is None:
-            dom = functools.reduce(lambda f, g: f @ g,
-                                   (f.dom for f in self.factors), Ty())
+            dom = reduce_parallel((f.dom for f in self.factors), Ty())
         if cod is None:
-            cod = functools.reduce(lambda f, g: f @ g,
-                                   (f.cod for f in self.factors), Ty())
+            cod = reduce_parallel((f.cod for f in self.factors), Ty())
         super().__init__(repr(self), dom, cod)
 
     def __repr__(self):
         return "Parallel(factors={})".format(repr(self.factors))
 
     def collapse(self, falg):
-        return falg(functools.reduce(lambda f, g: f @ g,
-                                     [f.collapse(falg) for f in self.factors]))
+        return falg(Parallel([f.collapse(falg) for f in self.factors]))
+
+    def wire_adjacency(self, predecessor):
+        preds = predecessor.factors if isinstance(predecessor, Parallel) else\
+                [predecessor]
+        adjacency = np.zeros((len(preds), len(self.factors)), dtype=np.uint)
+
+        l = r = 0
+        i = j = 0
+        for _ in range(len(self.dom)):
+            if i >= len(preds[l].cod):
+                l += 1
+                i = 0
+            if j >= len(self.factors[r].dom):
+                r += 1
+                j = 0
+            adjacency[l, r] += 1
+            i += 1
+            j += 1
+        return adjacency
 
     def then(self, *others):
         if len(others) != 1 or any(isinstance(other, Sum) for other in others):
@@ -260,35 +285,30 @@ class Parallel(Wiring):
             raise cat.AxiomError(messages.does_not_compose(self, other))
 
         if isinstance(other, Parallel):
-            wires = {}
+            adjacency = other.wire_adjacency(self)
 
-            # Map the wires of the other's domain
-            w = 0
-            for g in other.factors:
-                for k in range(len(g.dom)):
-                    wires[w + k] = g
-                w += len(g.dom)
+            f_factors = []
+            g_factors = []
+            used = set()
+            for j, g in enumerate(other.factors):
+                incoming = np.flatnonzero(adjacency[:, j])
+                fs = [self.factors[i] for i in incoming]
 
-            # Kwisatz Haderach: shortener of the wires
-            fs = []
-            gs = []
-            w = 0
-            for f in self.factors:
-                if isinstance(f, Id):
-                    for k in range(len(f.cod)):
-                        if wires[w + k] not in fs:
-                            fs.append(wires[w + k])
-                            gs.append(Id(wires[w + k].cod))
+                if all(np.count_nonzero(adjacency[i, :]) == 1 for i
+                       in incoming):
+                    f_factors.append(reduce_parallel(fs) >> g)
+                    g_factors.append(Id(g.cod))
                 else:
-                    fs.append(f)
-                    if wires[w] not in gs:
-                        gs.append(wires[w])
-                w += len(f.cod)
-            fs = functools.reduce(lambda f1, f2: f1 @ f2, fs, Id(Ty()))
-            gs = functools.reduce(lambda g1, g2: g1 @ g2, gs, Id(Ty()))
-            return Wiring.then(fs, gs)
+                    f_factors += [f for i, f in zip(incoming, fs)
+                                  if i not in used]
+                    g_factors.append(g)
+                used |= set(incoming)
 
-        super().then(other)
+            f_factors = reduce_parallel(f_factors)
+            g_factors = reduce_parallel(g_factors)
+            return Wiring.then(f_factors, g_factors)
+
+        return super().then(other)
 
     def merge_wires(self):
         dom, cod = Ty(), Ty()
@@ -310,10 +330,10 @@ class Functor(monoidal.Functor):
         if isinstance(f, Box):
             return self.ar[f]
         if isinstance(f, Sequential):
-            return functools.reduce(lambda a, b: a >> b, f.arrows)
+            return reduce_sequential(f.arrows)
         if isinstance(f, Parallel):
-            return functools.reduce(lambda a, b: a @ b, f.factors)
-        return f
+            return reduce_parallel(f.factors, self.ar_factory.id(Ty()))
+        raise TypeError(messages.type_err(Wiring, f))
 
     def __call__(self, diagram):
         if isinstance(diagram, Wiring):
