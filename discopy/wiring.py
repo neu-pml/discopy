@@ -284,11 +284,12 @@ class Parallel(Wiring):
                     if wires[w] not in gs:
                         gs.append(wires[w])
                 w += len(f.cod)
+
             fs = functools.reduce(lambda f1, f2: f1 @ f2, fs, Id(Ty()))
             gs = functools.reduce(lambda g1, g2: g1 @ g2, gs, Id(Ty()))
             return Wiring.then(fs, gs)
 
-        super().then(other)
+        return super().then(other)
 
     def merge_wires(self):
         dom, cod = Ty(), Ty()
