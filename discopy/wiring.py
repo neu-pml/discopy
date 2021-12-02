@@ -7,6 +7,7 @@ Implements wiring diagrams as a free dagger PROP.
 from abc import ABC, abstractmethod
 import functools
 import itertools
+import numpy as np
 
 from discopy import cat, messages, monoidal
 from discopy.monoidal import PRO, Sum, Ty
@@ -255,6 +256,25 @@ class Parallel(Wiring):
 
     def collapse(self, falg):
         return falg(reduce_parallel(f.collapse(falg) for f in self.factors))
+
+    def wire_adjacency(self, predecessor):
+        preds = predecessor.factors if isinstance(predecessor, Parallel) else\
+                [predecessor]
+        adjacency = np.zeros((len(preds), len(self.factors)), dtype=np.uint)
+
+        l = r = 0
+        i = j = 0
+        for _ in range(len(self.dom)):
+            if i >= len(preds[l].cod):
+                l += 1
+                i = 0
+            if j >= len(self.factors[r].dom):
+                r += 1
+                j = 0
+            adjacency[l, r] += 1
+            i += 1
+            j += 1
+        return adjacency
 
     def then(self, *others):
         if len(others) != 1 or any(isinstance(other, Sum) for other in others):
