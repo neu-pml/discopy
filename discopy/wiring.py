@@ -11,6 +11,14 @@ import itertools
 from discopy import cat, messages, monoidal
 from discopy.monoidal import PRO, Sum, Ty
 
+def reduce_sequential(arrows):
+    return functools.reduce(lambda f, g: f >> g, arrows)
+
+def reduce_parallel(factors, ident=None):
+    if ident is None:
+        ident = Id(Ty())
+    return functools.reduce(lambda x, y: x @ y, factors, ident)
+
 def _dagger_falg(diagram):
     if isinstance(diagram, Box):
         if diagram.name[-1] == '†':
@@ -19,7 +27,7 @@ def _dagger_falg(diagram):
             name = diagram.name + '†'
         return Box(name, diagram.cod, diagram.dom, data=diagram.data)
     if isinstance(diagram, Sequential):
-        return Sequential(reversed(diagram.arrows))
+        return reduce_sequential(reversed(diagram.arrows))
     return diagram
 
 class Wiring(ABC, monoidal.Box):
@@ -180,8 +188,7 @@ class Sequential(Wiring):
         return "Sequential(arrows={})".format(repr(self.arrows))
 
     def collapse(self, falg):
-        return falg(functools.reduce(lambda f, g: f >> g,
-                                     [f.collapse(falg) for f in self.arrows]))
+        return falg(reduce_sequential(f.collapse(falg) for f in self.arrows))
 
     def then(self, *others):
         if len(others) != 1 or any(isinstance(other, Sum) for other in others):
@@ -237,19 +244,16 @@ class Parallel(Wiring):
     def __init__(self, factors, dom=None, cod=None):
         self.factors = list(itertools.chain(*_flatten_factors(factors)))
         if dom is None:
-            dom = functools.reduce(lambda f, g: f @ g,
-                                   (f.dom for f in self.factors), Ty())
+            dom = reduce_parallel((f.dom for f in self.factors), Ty())
         if cod is None:
-            cod = functools.reduce(lambda f, g: f @ g,
-                                   (f.cod for f in self.factors), Ty())
+            cod = reduce_parallel((f.cod for f in self.factors), Ty())
         super().__init__(repr(self), dom, cod)
 
     def __repr__(self):
         return "Parallel(factors={})".format(repr(self.factors))
 
     def collapse(self, falg):
-        return falg(functools.reduce(lambda f, g: f @ g,
-                                     [f.collapse(falg) for f in self.factors]))
+        return falg(reduce_parallel(f.collapse(falg) for f in self.factors))
 
     def then(self, *others):
         if len(others) != 1 or any(isinstance(other, Sum) for other in others):
@@ -312,10 +316,10 @@ class Functor(monoidal.Functor):
         if isinstance(f, Box):
             return self.ar[f]
         if isinstance(f, Sequential):
-            return functools.reduce(lambda a, b: a >> b, f.arrows)
+            return reduce_sequential(f.arrows)
         if isinstance(f, Parallel):
-            return functools.reduce(lambda a, b: a @ b, f.factors)
-        return f
+            return reduce_parallel(f.factors)
+        raise TypeError(messages.type_err(Wiring, f))
 
     def __call__(self, diagram):
         if isinstance(diagram, Wiring):
