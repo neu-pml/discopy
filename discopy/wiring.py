@@ -332,7 +332,7 @@ class Functor(monoidal.Functor):
         if isinstance(f, Sequential):
             return reduce_sequential(f.arrows)
         if isinstance(f, Parallel):
-            return reduce_parallel(f.factors)
+            return reduce_parallel(f.factors, self.ar_factory.id(Ty()))
         raise TypeError(messages.type_err(Wiring, f))
 
     def __call__(self, diagram):
