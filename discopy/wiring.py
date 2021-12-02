@@ -189,7 +189,7 @@ class Sequential(Wiring):
         return "Sequential(arrows={})".format(repr(self.arrows))
 
     def collapse(self, falg):
-        return falg(reduce_sequential(f.collapse(falg) for f in self.arrows))
+        return falg(Sequential([f.collapse(falg) for f in self.arrows]))
 
     def then(self, *others):
         if len(others) != 1 or any(isinstance(other, Sum) for other in others):
