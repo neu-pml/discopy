@@ -206,27 +206,14 @@ class Sequential(Wiring):
 
     def merge_wires(self):
         for f, g in zip(self.arrows, self.arrows[1:]):
-            fs = f.factors if isinstance(f, Parallel) else [f]
-            gs = g.factors if isinstance(g, Parallel) else [g]
+            fs = f if isinstance(f, Parallel) else Parallel([f])
+            gs = g if isinstance(g, Parallel) else Parallel([g])
 
-            l = r = 0
-            i = j = 0
-            wires = set()
-            for _ in range(len(f.cod)):
-                if i >= len(fs[l].cod):
-                    l += 1
-                    i = 0
-                if j >= len(gs[r].dom):
-                    r += 1
-                    j = 0
-                wires.add((l, r))
-                i += 1
-                j += 1
-
-            for k, factor in enumerate(fs):
-                factor.merge_cod(len({(x, y) for x, y in wires if x == k}))
-            for k, factor in enumerate(gs):
-                factor.merge_dom(len({(x, y) for x, y in wires if y == k}))
+            adjacency = gs.wire_adjacency(fs)
+            for k, factor in enumerate(fs.factors):
+                factor.merge_cod(np.count_nonzero(adjacency[k, :]))
+            for k, factor in enumerate(gs.factors):
+                factor.merge_dom(np.count_nonzero(adjacency[:, k]))
 
         for f in self.arrows:
             f.merge_wires()
