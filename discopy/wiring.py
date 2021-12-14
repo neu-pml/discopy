@@ -243,7 +243,8 @@ class Parallel(Wiring):
         return "Parallel(factors={})".format(repr(self.factors))
 
     def collapse(self, falg):
-        return falg(Parallel([f.collapse(falg) for f in self.factors]))
+        return falg(Parallel([f.collapse(falg) for f in self.factors],
+                             dom=self.dom, cod=self.cod))
 
     def wire_adjacency(self, predecessor):
         preds = predecessor.factors if isinstance(predecessor, Parallel) else\
