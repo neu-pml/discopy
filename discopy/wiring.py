@@ -28,7 +28,8 @@ def _dagger_falg(diagram):
             name = diagram.name + '†'
         return Box(name, diagram.cod, diagram.dom, data=diagram.data)
     if isinstance(diagram, Sequential):
-        return reduce_sequential(reversed(diagram.arrows))
+        return Sequential(reversed(diagram.arrows), dom=diagram.cod,
+                          cod=diagram.dom)
     return diagram
 
 class Wiring(ABC, monoidal.Box):
