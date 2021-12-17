@@ -28,7 +28,8 @@ def _dagger_falg(diagram):
             name = diagram.name + '†'
         return Box(name, diagram.cod, diagram.dom, data=diagram.data)
     if isinstance(diagram, Sequential):
-        return reduce_sequential(reversed(diagram.arrows))
+        return Sequential(reversed(diagram.arrows), dom=diagram.cod,
+                          cod=diagram.dom)
     return diagram
 
 class Wiring(ABC, monoidal.Box):
@@ -189,7 +190,8 @@ class Sequential(Wiring):
         return "Sequential(arrows={})".format(repr(self.arrows))
 
     def collapse(self, falg):
-        return falg(Sequential([f.collapse(falg) for f in self.arrows]))
+        return falg(Sequential([f.collapse(falg) for f in self.arrows],
+                               dom=self.dom, cod=self.cod))
 
     def then(self, *others):
         if len(others) != 1 or any(isinstance(other, Sum) for other in others):
@@ -242,7 +244,8 @@ class Parallel(Wiring):
         return "Parallel(factors={})".format(repr(self.factors))
 
     def collapse(self, falg):
-        return falg(Parallel([f.collapse(falg) for f in self.factors]))
+        return falg(Parallel([f.collapse(falg) for f in self.factors],
+                             dom=self.dom, cod=self.cod))
 
     def wire_adjacency(self, predecessor):
         preds = predecessor.factors if isinstance(predecessor, Parallel) else\
