@@ -316,13 +316,13 @@ class Functor(monoidal.Functor):
 
     def __functor_falg__(self, f):
         if isinstance(f, Id):
-            return self.ar_factory.id(f.dom)
+            return self.ar_factory.id(self.ob[f.dom])
         if isinstance(f, Box):
             return self.ar[f]
         if isinstance(f, Sequential):
             return reduce_sequential(f.arrows)
         if isinstance(f, Parallel):
-            return reduce_parallel(f.factors, self.ar_factory.id(Ty()))
+            return reduce_parallel(f.factors, self.ar_factory.id(self.ob[Ty()]))
         raise TypeError(messages.type_err(Wiring, f))
 
     def __call__(self, diagram):
