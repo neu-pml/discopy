@@ -32,7 +32,7 @@ def _dagger_falg(diagram):
                           cod=diagram.dom)
     return diagram
 
-class Wiring(ABC, monoidal.Box):
+class Diagram(ABC, monoidal.Box):
     """
     Implements wiring diagrams in free dagger PROPs.
     """
@@ -55,8 +55,8 @@ class Wiring(ABC, monoidal.Box):
         if len(others) != 1 or any(isinstance(other, Sum) for other in others):
             return monoidal.Diagram.then(self, *others)
         other = others[0]
-        if not isinstance(other, Wiring):
-            raise TypeError(messages.type_err(Wiring, other))
+        if not isinstance(other, Diagram):
+            raise TypeError(messages.type_err(Diagram, other))
         if self.cod != other.dom:
             raise cat.AxiomError(messages.does_not_compose(self, other))
 
@@ -74,8 +74,8 @@ class Wiring(ABC, monoidal.Box):
         if len(others) != 1 or any(isinstance(other, Sum) for other in others):
             return monoidal.Diagram.tensor(self, *others)
         other = others[0]
-        if not isinstance(other, Wiring):
-            raise TypeError(messages.type_err(Wiring, other))
+        if not isinstance(other, Diagram):
+            raise TypeError(messages.type_err(Diagram, other))
 
         factors = [f for f in (self,) + others if len(f.dom) or len(f.cod)]
         if not factors:
@@ -100,7 +100,7 @@ class Wiring(ABC, monoidal.Box):
                                   ar_factory=monoidal.Box)
         drawing_functor(self).draw(*args, **kwargs)
 
-class Id(Wiring):
+class Id(Diagram):
     """ Empty wiring diagram in a free dagger PROP. """
     def __init__(self, dom):
         if not isinstance(dom, Ty):
@@ -126,8 +126,8 @@ class Id(Wiring):
         if len(others) != 1 or any(isinstance(other, Sum) for other in others):
             return monoidal.Diagram.tensor(self, *others)
         other = others[0]
-        if not isinstance(other, Wiring):
-            raise TypeError(messages.type_err(Wiring, other))
+        if not isinstance(other, Diagram):
+            raise TypeError(messages.type_err(Diagram, other))
 
         if not self.dom:
             return other
@@ -142,7 +142,7 @@ class Id(Wiring):
     def merge_cod(self, wires=0):
         self.merge_dom(wires)
 
-class Box(Wiring):
+class Box(Diagram):
     """ Implements boxes in wiring diagrams. """
     def __init__(self, name, dom, cod, **params):
         if not isinstance(dom, Ty):
@@ -176,7 +176,7 @@ def _flatten_arrows(arrows):
         else:
             yield [arr]
 
-class Sequential(Wiring):
+class Sequential(Diagram):
     """ Sequential composition in a wiring diagram. """
     def __init__(self, arrows, dom=None, cod=None):
         self.arrows = list(itertools.chain(*_flatten_arrows(arrows)))
@@ -197,8 +197,8 @@ class Sequential(Wiring):
         if len(others) != 1 or any(isinstance(other, Sum) for other in others):
             return monoidal.Diagram.then(self, *others)
         other = others[0]
-        if not isinstance(other, Wiring):
-            raise TypeError(messages.type_err(Wiring, other))
+        if not isinstance(other, Diagram):
+            raise TypeError(messages.type_err(Diagram, other))
         if self.cod != other.dom:
             raise cat.AxiomError(messages.does_not_compose(self, other))
 
@@ -230,7 +230,7 @@ def _flatten_factors(factors):
         else:
             yield [f]
 
-class Parallel(Wiring):
+class Parallel(Diagram):
     """ Parallel composition in a wiring diagram. """
     def __init__(self, factors, dom=None, cod=None):
         self.factors = list(itertools.chain(*_flatten_factors(factors)))
@@ -296,7 +296,7 @@ class Parallel(Wiring):
 
             f_factors = reduce_parallel(f_factors)
             g_factors = reduce_parallel(g_factors)
-            return Wiring.then(f_factors, g_factors)
+            return Diagram.then(f_factors, g_factors)
 
         return super().then(other)
 
@@ -323,10 +323,10 @@ class Functor(monoidal.Functor):
             return reduce_sequential(f.arrows)
         if isinstance(f, Parallel):
             return reduce_parallel(f.factors, self.ar_factory.id(self.ob[Ty()]))
-        raise TypeError(messages.type_err(Wiring, f))
+        raise TypeError(messages.type_err(Diagram, f))
 
     def __call__(self, diagram):
-        if isinstance(diagram, Wiring):
+        if isinstance(diagram, Diagram):
             return diagram.collapse(self.__functor_falg__)
         return super().__call__(diagram)
 
@@ -344,6 +344,6 @@ class WiringFunctor(Functor):
 
     def __call__(self, diagram):
         result = super().__call__(diagram)
-        if isinstance(result, Wiring) and not self._typed:
+        if isinstance(result, Diagram) and not self._typed:
             result.merge_wires()
         return result
