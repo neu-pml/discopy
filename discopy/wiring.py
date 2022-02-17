@@ -44,6 +44,14 @@ class Diagram(ABC, monoidal.Box):
         codomain, and auxiliary data item.
         """
 
+    @abstractmethod
+    def __iter__(self):
+        """
+        Iterate over a wiring diagram recursively, without producing a
+        catamorphic result.
+        """
+        return
+
     @staticmethod
     def id(dom):
         return Id(dom)
@@ -113,6 +121,9 @@ class Id(Diagram):
     def collapse(self, falg):
         return falg(self)
 
+    def __iter__(self):
+        yield self
+
     def then(self, *others):
         if len(others) != 1 or any(isinstance(other, Sum) for other in others):
             return monoidal.Diagram.tensor(self, *others)
@@ -159,6 +170,9 @@ class Box(Diagram):
     def collapse(self, falg):
         return falg(self)
 
+    def __iter__(self):
+        yield self
+
     def merge_dom(self, wires=0):
         assert wires <= len(self.dom)
         self._dom = PRO(wires)
@@ -192,6 +206,10 @@ class Sequential(Diagram):
     def collapse(self, falg):
         return falg(Sequential([f.collapse(falg) for f in self.arrows],
                                dom=self.dom, cod=self.cod))
+
+    def __iter__(self):
+        for f in self.arrows:
+            yield from f
 
     def then(self, *others):
         if len(others) != 1 or any(isinstance(other, Sum) for other in others):
@@ -246,6 +264,10 @@ class Parallel(Diagram):
     def collapse(self, falg):
         return falg(Parallel([f.collapse(falg) for f in self.factors],
                              dom=self.dom, cod=self.cod))
+
+    def __iter__(self):
+        for f in self.factors:
+            yield from f
 
     def wire_adjacency(self, predecessor):
         preds = predecessor.factors if isinstance(predecessor, Parallel) else\
