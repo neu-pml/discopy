@@ -265,6 +265,10 @@ class Parallel(Diagram):
         return falg(Parallel([f.collapse(falg) for f in self.factors],
                              dom=self.dom, cod=self.cod))
 
+    def __iter__(self):
+        for f in self.factors:
+            yield from f
+
     def wire_adjacency(self, predecessor):
         preds = predecessor.factors if isinstance(predecessor, Parallel) else\
                 [predecessor]
