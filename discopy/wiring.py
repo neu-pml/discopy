@@ -207,6 +207,10 @@ class Sequential(Diagram):
         return falg(Sequential([f.collapse(falg) for f in self.arrows],
                                dom=self.dom, cod=self.cod))
 
+    def __iter__(self):
+        for f in self.arrows:
+            yield from f
+
     def then(self, *others):
         if len(others) != 1 or any(isinstance(other, Sum) for other in others):
             return monoidal.Diagram.then(self, *others)
