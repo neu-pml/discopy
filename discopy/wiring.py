@@ -44,6 +44,14 @@ class Diagram(ABC, monoidal.Box):
         codomain, and auxiliary data item.
         """
 
+    @abstractmethod
+    def __iter__(self):
+        """
+        Iterate over a wiring diagram recursively, without producing a
+        catamorphic result.
+        """
+        return
+
     @staticmethod
     def id(dom):
         return Id(dom)
