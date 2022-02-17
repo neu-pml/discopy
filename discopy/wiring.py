@@ -170,6 +170,9 @@ class Box(Diagram):
     def collapse(self, falg):
         return falg(self)
 
+    def __iter__(self):
+        yield self
+
     def merge_dom(self, wires=0):
         assert wires <= len(self.dom)
         self._dom = PRO(wires)
