@@ -121,6 +121,9 @@ class Id(Diagram):
     def collapse(self, falg):
         return falg(self)
 
+    def __iter__(self):
+        yield self
+
     def then(self, *others):
         if len(others) != 1 or any(isinstance(other, Sum) for other in others):
             return monoidal.Diagram.tensor(self, *others)
