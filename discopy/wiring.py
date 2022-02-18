@@ -9,7 +9,7 @@ import functools
 import itertools
 import numpy as np
 
-from discopy import cat, messages, monoidal
+from discopy import cat, drawing, messages, monoidal
 from discopy.monoidal import PRO, Sum, Ty
 
 def reduce_sequential(arrows):
@@ -100,6 +100,13 @@ class Diagram(ABC, monoidal.Box):
 
     def merge_wires(self):
         pass
+
+    def graph(self):
+        g = drawing.diagram2nx(DIAGRAMMING_FUNCTOR(self))[0]
+        for node in g.nodes:
+            if node.kind == 'box':
+                node.name = node.box.name
+        return g
 
     def draw(self, *args, **kwargs):
         DIAGRAMMING_FUNCTOR(self).draw(*args, **kwargs)
