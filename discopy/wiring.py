@@ -102,11 +102,7 @@ class Diagram(ABC, monoidal.Box):
         pass
 
     def draw(self, *args, **kwargs):
-        def ar(f):
-            return monoidal.Box(f.name, f.dom, f.cod, data=f.data)
-        drawing_functor = Functor(lambda t: t, ar, ob_factory=Ty,
-                                  ar_factory=monoidal.Box)
-        drawing_functor(self).draw(*args, **kwargs)
+        DIAGRAMMING_FUNCTOR(self).draw(*args, **kwargs)
 
 class Id(Diagram):
     """ Empty wiring diagram in a free dagger PROP. """
@@ -351,6 +347,11 @@ class Functor(monoidal.Functor):
         if isinstance(diagram, Diagram):
             return diagram.collapse(self.__functor_falg__)
         return super().__call__(diagram)
+
+DIAGRAMMING_FUNCTOR = Functor(lambda t: t,
+                              lambda f: monoidal.Box(f.name, f.dom, f.cod,
+                                                     data=f.data),
+                              ob_factory=Ty, ar_factory=monoidal.Box)
 
 class WiringFunctor(Functor):
     def __init__(self, typed=False):
