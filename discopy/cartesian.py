@@ -41,6 +41,35 @@ from discopy import messages, monoidal, rigid
 from discopy.monoidal import Sum
 from discopy.rigid import PRO
 
+class product:
+    def __init__(self, *functions):
+        if not functions:
+            raise TypeError(repr(type(self).__name__) +
+                            ' needs at least one argument')
+
+        _functions = []
+        doms = []
+        for function, dom in functions:
+            if not callable(function):
+                raise TypeError(repr(type(self).__name__) +
+                                ' arguments must be callable')
+            if isinstance(function, product):
+                _functions = _functions + function.__wrapped__
+                doms = doms + function._doms
+            else:
+                _functions.append(function)
+                doms.append(dom)
+        self.__wrapped__ = _functions
+        self._doms = doms
+
+    def __call__(self, *args):
+        i = 0
+        result = ()
+        for func, dom in zip(self.__wrapped__, self._doms):
+            val = tuplify(func(*args[i:i+len(dom)]))
+            result = result + val
+            i += len(dom)
+        return result
 
 def tuplify(stuff):
     """ Returns :code:`xs` if it is already a tuple else :code:`(xs, )`. """
@@ -125,6 +154,11 @@ class Function(rigid.Box):
             raise TypeError(messages.type_err(Function, other))
         if len(self.cod) != len(other.dom):
             raise AxiomError(messages.does_not_compose(self, other))
+        if self.function == untuplify:
+            return other
+        if other.function == untuplify:
+            return self
+
         function = compose(lambda vals: other.function(*vals), tuplify,
                            self.function)
         return Function(self.dom, other.cod, function)
@@ -143,13 +177,14 @@ class Function(rigid.Box):
         other = others[0]
         if not isinstance(other, Function):
             raise TypeError(messages.type_err(Function, other))
+        if self.dom == PRO(0) and self.function == untuplify:
+            return other
+        if other.dom == PRO(0) and other.function == untuplify:
+            return self
         dom, cod = self.dom @ other.dom, self.cod @ other.cod
 
-        def product(*vals):
-            vals0 = tuplify(self.function(*vals[:len(self.dom)]))
-            vals1 = tuplify(other.function(*vals[len(self.dom):]))
-            return untuplify(*(vals0 + vals1))
-        return Function(dom, cod, product)
+        prod = product((self.function, self.dom), (other.function, other.dom))
+        return Function(dom, cod, prod)
 
     @staticmethod
     def id(dom=0):
