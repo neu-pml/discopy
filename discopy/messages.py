@@ -75,3 +75,8 @@ def expected_input_length(function, values):
     """ Unexpected input length error. """
     return "Expected input of length {}, got {} instead.".format(
         len(function.dom), len(values))
+
+def expected_output_length(function, values):
+    """ Unexpected output length error. """
+    return "Expected output of length {}, got {} instead.".format(
+        len(function.cod), len(values))
