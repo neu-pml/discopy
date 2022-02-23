@@ -157,7 +157,11 @@ class Function(rigid.Box):
         """
         if not len(values) == len(self.dom):
             raise TypeError(messages.expected_input_length(self, values))
-        return self.function(*values)
+        results = self.function(*values)
+        if not len(tuplify(results)) == len(self.cod):
+            raise TypeError(messages.expected_output_length(self,
+                                                            tuplify(results)))
+        return results
 
     def then(self, *others):
         """
