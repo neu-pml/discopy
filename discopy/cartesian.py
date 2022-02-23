@@ -34,8 +34,6 @@ We can check the axioms for the Copy/Discard comonoid on specific inputs:
 >>> assert (Copy(4) >> Swap(4, 4))(42, 43, 44, 45) == Copy(4)(42, 43, 44, 45)
 """
 
-from compose import compose
-
 from discopy.cat import AxiomError
 from discopy import messages, monoidal, rigid
 from discopy.monoidal import Sum
@@ -70,6 +68,29 @@ class product:
             result = result + val
             i += len(dom)
         return result
+
+class compose:
+    def __init__(self, *functions):
+        if not functions:
+            raise TypeError(repr(type(self).__name__) +
+                            ' needs at least one argument')
+
+        _functions = []
+        for function in reversed(functions):
+            if not callable(function):
+                raise TypeError(repr(type(self).__name__) +
+                                ' arguments must be callable')
+
+            if isinstance(function, compose):
+                _functions = _functions + function.__wrapped__
+            else:
+                _functions.append(function)
+        self.__wrapped__ = _functions
+
+    def __call__(self, *values):
+        for func in self.__wrapped__:
+            values = tuplify(func(*values))
+        return untuplify(*values)
 
 def tuplify(stuff):
     """ Returns :code:`xs` if it is already a tuple else :code:`(xs, )`. """
@@ -159,8 +180,7 @@ class Function(rigid.Box):
         if other.function == untuplify:
             return self
 
-        function = compose(lambda vals: other.function(*vals), tuplify,
-                           self.function)
+        function = compose(other.function, self.function)
         return Function(self.dom, other.cod, function)
 
     def tensor(self, *others):
