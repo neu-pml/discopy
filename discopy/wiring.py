@@ -319,6 +319,8 @@ class Parallel(Diagram):
                     g_factors.append(g)
                 used |= set(incoming)
 
+            for i in set(range(len(self.factors))) - used:
+                f_factors.insert(i, self.factors[i])
             f_factors = reduce_parallel(f_factors)
             g_factors = reduce_parallel(g_factors)
             return Diagram.then(f_factors, g_factors)
