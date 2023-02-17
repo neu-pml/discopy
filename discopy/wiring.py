@@ -53,13 +53,13 @@ def _dagger_falg(diagram):
                           cod=diagram.dom)
     return diagram
 
-class Diagram(ABC, monoidal.Box):
+class Collapsible(ABC, Generic[T]):
     """
-    Implements wiring diagrams in free dagger PROPs.
+    Abstract class implementing catamorphic application of F-algebras with some
+    method :code:`collapse` and iteration with some method :code:`__iter__`.
     """
-
     @abstractmethod
-    def collapse(self, falg):
+    def collapse(self, falg: Callable[Generic[T], T]) -> T:
         """
         Collapse a wiring diagram catamorphically into a single domain,
         codomain, and auxiliary data item.
@@ -73,21 +73,22 @@ class Diagram(ABC, monoidal.Box):
         """
         return
 
+@factory
+class Diagram(monoidal.Box, Collapsible[monoidal.Diagram]):
+    """
+    Implements typed, directed wiring diagrams.
+    """
     @staticmethod
     def id(dom):
         return Id(dom)
 
-    def then(self, *others):
+    def then(self, *others: Diagram) -> Diagram:
         """
         Implements the sequential composition of wiring diagrams.
         """
-        if len(others) != 1 or any(isinstance(other, Sum) for other in others):
-            return monoidal.Diagram.then(self, *others)
-        other = others[0]
-        if not isinstance(other, Diagram):
-            raise TypeError(messages.type_err(Diagram, other))
-        if self.cod != other.dom:
-            raise cat.AxiomError(messages.does_not_compose(self, other))
+        for other in others:
+            utils.assert_isinstance(other, self.factory)
+            utils.assert_isinstance(self, other.factory)
 
         arrows = [f for f in (self,) + others if not isinstance(f, Id)]
         if not arrows:
@@ -96,25 +97,23 @@ class Diagram(ABC, monoidal.Box):
             return arrows[0]
         return Sequential(arrows)
 
-    def tensor(self, *others):
+    def tensor(self, other: Diagram = None, *others: Diagram) -> Diagram:
         """
         Implements the tensor product of wiring diagrams.
         """
-        if len(others) != 1 or any(isinstance(other, Sum) for other in others):
-            return monoidal.Diagram.tensor(self, *others)
-        other = others[0]
-        if not isinstance(other, Diagram):
-            raise TypeError(messages.type_err(Diagram, other))
+        if other is None:
+            return self
+        if others:
+            return self.tensor(other).tensor(*others)
+        utils.assert_isinstance(other, self.factory)
+        utils.assert_isinstance(self, other.factory)
 
-        factors = [f for f in (self,) + others if len(f.dom) or len(f.cod)]
+        factors = [f for f in (self,) + other if len(f.dom) or len(f.cod)]
         if not factors:
             return Id(Ty())
         if len(factors) == 1:
             return factors[0]
         return Parallel(factors)
-
-    def __matmul__(self, other):
-        return self.tensor(other)
 
     def dagger(self):
         return self.collapse(_dagger_falg)
