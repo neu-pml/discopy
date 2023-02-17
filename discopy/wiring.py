@@ -147,24 +147,12 @@ class Id(Diagram):
     def __iter__(self):
         yield self
 
-    def then(self, *others):
-        if len(others) != 1 or any(isinstance(other, Sum) for other in others):
-            return monoidal.Diagram.tensor(self, *others)
-        other = others[0]
+    def then(self, *others: Diagram) -> Diagram:
+        return others[0].then(*others[1:])
 
-        if self.cod != other.dom:
-            raise cat.AxiomError(messages.does_not_compose(self, other))
-        return other
-
-    def tensor(self, *others):
-        if len(others) != 1 or any(isinstance(other, Sum) for other in others):
-            return monoidal.Diagram.tensor(self, *others)
-        other = others[0]
-        if not isinstance(other, Diagram):
-            raise TypeError(messages.type_err(Diagram, other))
-
+    def tensor(self, other: Diagram = None, *others: Diagram) -> Diagram:
         if not self.dom:
-            return other
+            return other.tensor(*others)
         if isinstance(other, Id):
             return Id(self.dom @ other.dom)
         return super().tensor(other)
