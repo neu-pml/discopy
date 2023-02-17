@@ -166,13 +166,6 @@ class Id(Diagram):
 
 class Box(Diagram):
     """ Implements boxes in wiring diagrams. """
-    def __init__(self, name, dom, cod, **params):
-        if not isinstance(dom, Ty):
-            raise TypeError(messages.type_err(Ty, dom))
-        if not isinstance(cod, Ty):
-            raise TypeError(messages.type_err(Ty, cod))
-        super().__init__(name, dom, cod, **params)
-
     def __repr__(self):
         return "Box({}, dom={}, cod={}, data={})".format(
             repr(self.name), repr(self.dom), repr(self.cod), repr(self.data)
