@@ -289,13 +289,12 @@ class Parallel(Diagram):
             j += 1
         return adjacency
 
-    def then(self, *others):
-        if len(others) != 1 or any(isinstance(other, Sum) for other in others):
-            return monoidal.Diagram.tensor(self, *others)
-        other = others[0]
-
-        if self.cod != other.dom:
-            raise cat.AxiomError(messages.does_not_compose(self, other))
+    def then(self, *others: Diagram) -> Diagram:
+        for other in others:
+            utils.assert_isinstance(other, self.factory)
+            utils.assert_isinstance(self, other.factory)
+        other, others = others[0], others[1:]
+        assert_iscomposable(self, other)
 
         if isinstance(other, Parallel):
             adjacency = other.wire_adjacency(self)
@@ -321,9 +320,11 @@ class Parallel(Diagram):
                 f_factors.insert(i, self.factors[i])
             f_factors = reduce_parallel(f_factors)
             g_factors = reduce_parallel(g_factors)
-            return Diagram.then(f_factors, g_factors)
+            result = Diagram.then(f_factors, g_factors)
+        else:
+            result = super().then(other)
 
-        return super().then(other)
+        return result.then(*others)
 
     def merge_wires(self):
         dom, cod = Ty(), Ty()
