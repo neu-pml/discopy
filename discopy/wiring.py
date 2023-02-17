@@ -1,15 +1,36 @@
 # -*- coding: utf-8 -*-
 
 """
-Implements wiring diagrams as a free dagger PROP.
+The operad of typed, directed wiring diagrams.
+
+Summary
+-------
+
+.. autosummary::
+    :template: class.rst
+    :nosignatures:
+    :toctree:
+
+    Diagram
+    Box
+    Sequential
+    Parallel
+    Functor
+    WiringFunctor
 """
+
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import functools
 import itertools
 import numpy as np
+from typing import Callable, Generic, Sequence, TypeVar
 
-from discopy import cat, drawing, messages, monoidal
+T = TypeVar('T')
+
+from discopy import drawing, messages, monoidal, utils
+from discopy.cat import assert_iscomposable, AxiomError, factory
 from discopy.monoidal import PRO, Sum, Ty
 
 def reduce_sequential(arrows):
