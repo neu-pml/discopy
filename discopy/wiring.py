@@ -49,7 +49,7 @@ def _dagger_falg(diagram):
             name = diagram.name + '†'
         return Box(name, diagram.cod, diagram.dom, data=diagram.data)
     if isinstance(diagram, Sequential):
-        return Sequential(reversed(diagram.arrows), dom=diagram.cod,
+        return Sequential(reversed(diagram.inside), dom=diagram.cod,
                           cod=diagram.dom)
     return diagram
 
@@ -190,46 +190,43 @@ def _flatten_arrows(arrows):
         if isinstance(arr, Id):
             continue
         if isinstance(arr, Sequential):
-            yield arr.arrows
+            yield arr.inside
         else:
             yield [arr]
 
 class Sequential(Diagram):
     """ Sequential composition in a wiring diagram. """
-    def __init__(self, arrows, dom=None, cod=None):
-        self.arrows = list(itertools.chain(*_flatten_arrows(arrows)))
+    def __init__(self, inside: Sequence[Diagram], dom=None, cod=None):
+        self.inside = list(itertools.chain(*_flatten_arrows(inside)))
         if dom is None:
-            dom = self.arrows[0].dom
+            dom = self.inside[0].dom
         if cod is None:
-            cod = self.arrows[-1].cod
+            cod = self.inside[-1].cod
         super().__init__(repr(self), dom, cod)
 
     def __repr__(self):
-        return "Sequential(arrows={})".format(repr(self.arrows))
+        return "Sequential(arrows={})".format(repr(self.inside))
 
     def collapse(self, falg):
-        return falg(Sequential([f.collapse(falg) for f in self.arrows],
+        return falg(Sequential([f.collapse(falg) for f in self.inside],
                                dom=self.dom, cod=self.cod))
 
     def __iter__(self):
-        for f in self.arrows:
+        for f in self.inside:
             yield from f
 
-    def then(self, *others):
-        if len(others) != 1 or any(isinstance(other, Sum) for other in others):
-            return monoidal.Diagram.then(self, *others)
-        other = others[0]
-        if not isinstance(other, Diagram):
-            raise TypeError(messages.type_err(Diagram, other))
-        if self.cod != other.dom:
-            raise cat.AxiomError(messages.does_not_compose(self, other))
+    def then(self, *others: Diagram) -> Diagram:
+        for other in others:
+            utils.assert_isinstance(other, self.factory)
+            utils.assert_isinstance(self, other.factory)
+        other, others = others[0], others[1:]
 
-        last = self.arrows[-1] >> other
-        last = last.arrows if isinstance(last, Sequential) else [last]
-        return Sequential(self.arrows[:-1] + last)
+        last = self.inside[-1] >> other
+        last = last.inside if isinstance(last, Sequential) else [last]
+        return Sequential(self.inside[:-1] + last).then(others)
 
     def merge_wires(self):
-        for f, g in zip(self.arrows, self.arrows[1:]):
+        for f, g in zip(self.inside, self.inside[1:]):
             fs = f if isinstance(f, Parallel) else Parallel([f])
             gs = g if isinstance(g, Parallel) else Parallel([g])
 
@@ -239,7 +236,7 @@ class Sequential(Diagram):
             for k, factor in enumerate(gs.factors):
                 factor.merge_dom(np.count_nonzero(adjacency[:, k]))
 
-        for f in self.arrows:
+        for f in self.inside:
             f.merge_wires()
 
 def _flatten_factors(factors):
@@ -348,7 +345,7 @@ class Functor(monoidal.Functor):
         if isinstance(f, Box):
             return self.ar[f]
         if isinstance(f, Sequential):
-            return reduce_sequential(f.arrows)
+            return reduce_sequential(f.inside)
         if isinstance(f, Parallel):
             return reduce_parallel(f.factors, self.ar_factory.id(self.ob[Ty()]))
         raise TypeError(messages.type_err(Diagram, f))
