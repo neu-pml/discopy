@@ -1,21 +1,57 @@
 # -*- coding: utf-8 -*-
 
 """
-Implements the translation between discopy and pytket.
+Interface with pytket.
+
+Summary
+-------
+
+.. autosummary::
+    :template: class.rst
+    :nosignatures:
+    :toctree:
+
+    Circuit
+
+.. admonition:: Functions
+
+    .. autosummary::
+        :template: function.rst
+        :nosignatures:
+        :toctree:
+
+        to_tk
+        from_tk
 """
 
 from unittest.mock import Mock
 
 import pytket as tk
-from pytket.circuit import Bit, Qubit  # pylint: disable=no-name-in-module
+from pytket.circuit import Bit, Op, OpType, Qubit
 from pytket.utils import probs_from_counts
 
-from discopy import messages
-from discopy.quantum.circuit import (
-    Functor, Id, bit, qubit, Discard, Measure)
+from discopy.quantum.circuit import Functor, Id, bit, qubit, Circuit as Diagram
 from discopy.quantum.gates import (
-    ClassicalGate, QuantumGate, Bits, Bra, Ket,
-    Swap, Scalar, MixedScalar, GATES, X, Rx, Rz, CRz, format_number)
+    ClassicalGate, Controlled, QuantumGate, Bits, Bra, Digits, Ket,
+    Swap, Scalar, MixedScalar, GATES, X, Rx, Ry, Rz, CRx,
+    CRz, format_number, Discard, Measure)
+from discopy.utils import assert_isinstance
+
+OPTYPE_MAP = {"H": OpType.H,
+              "X": OpType.X,
+              "Y": OpType.Y,
+              "Z": OpType.Z,
+              "S": OpType.S,
+              "T": OpType.T,
+              "Rx": OpType.Rx,
+              "Ry": OpType.Ry,
+              "Rz": OpType.Rz,
+              "CX": OpType.CX,
+              "CZ": OpType.CZ,
+              "CRx": OpType.CRx,
+              "CRz": OpType.CRz,
+              "Swap": OpType.SWAP,
+              }
 
 
 class Circuit(tk.Circuit):
@@ -44,15 +80,15 @@ class Circuit(tk.Circuit):
         def repr_gate(gate):
             name, inputs = gate.op.type.name, gate.op.params + [
                 x.index[0] for x in gate.qubits + gate.bits]
-            return "{}({})".format(name, ", ".join(map(str, inputs)))
-        init = ["tk.Circuit({}{})".format(
-            self.n_qubits, ", {}".format(len(self.bits)) if self.bits else "")]
+            return f"{name}({', '.join(map(str, inputs))})"
+        str_bits = f", {len(self.bits)}" if self.bits else ""
+        init = [f"tk.Circuit({self.n_qubits}{str_bits})"]
         gates = list(map(repr_gate, list(self)))
-        post_select = ["post_select({})".format(self.post_selection)]\
+        post_select = [f"post_select({self.post_selection})"]\
             if self.post_selection else []
-        scalar = ["scale({})".format(format_number(x))
+        scalar = [f"scale({format_number(x)})"
                   for x in [self.scalar] if x != 1]
-        post_process = ["post_process({})".format(repr(d))
+        post_process = [f"post_process({repr(d)})"
                         for d in [self.post_processing] if d]
         return '.'.join(init + gates + post_select + scalar + post_process)
 
@@ -66,7 +102,7 @@ class Circuit(tk.Circuit):
         if offset is not None:
             self.post_processing @= Id(bit)
             self.post_processing >>= Id(bit ** offset)\
-                @ Id.swap(self.post_processing.cod[offset:-1], bit)
+                @ Diagram.swap(self.post_processing.cod[offset:-1], bit)
         super().add_bit(unit)
 
     def rename_units(self, renaming):
@@ -147,7 +183,7 @@ def to_tk(circuit):
     def remove_ket1(box):
         if not isinstance(box, Ket):
             return box
-        x_gates = Id(0).tensor(*(X if x else Id(1) for x in box.bitstring))
+        x_gates = Id().tensor(*(X if x else Id(qubit) for x in box.bitstring))
         return Ket(*(len(box.bitstring) * (0, ))) >> x_gates
 
     def prepare_qubits(qubits, box, offset):
@@ -208,20 +244,39 @@ def to_tk(circuit):
 
     def add_gate(qubits, box, offset):
         i_qubits = [qubits[offset + j] for j in range(len(box.dom))]
-        if isinstance(box, (Rx, Rz)):
-            tk_circ.__getattribute__(box.name[:2])(2 * box.phase, *i_qubits)
-        elif isinstance(box, CRz):
-            tk_circ.__getattribute__(box.name[:3])(2 * box.phase, *i_qubits)
-        elif hasattr(tk_circ, box.name):
-            tk_circ.__getattribute__(box.name)(*i_qubits)
+
+        if isinstance(box, (Rx, Ry, Rz)):
+            op = Op.create(OPTYPE_MAP[box.name[:2]], 2 * box.phase)
+        elif isinstance(box, Controlled):
+            i_qubits = []
+            idx = offset if box.distance > 0 else offset - box.distance
+            curr_box = box
+            while isinstance(curr_box, Controlled):
+                i_qubits.append(qubits[idx])
+                idx += curr_box.distance
+                curr_box = curr_box.controlled
+            i_qubits.append(qubits[idx])
+
+            name = box.name.split('(')[0]
+            if box.name in ('CX', 'CZ', 'CCX'):
+                op = Op.create(OPTYPE_MAP[name])
+            elif name in ('CRx', 'CRz'):
+                op = Op.create(OPTYPE_MAP[name], 2 * box.phase)
+        elif box.name in OPTYPE_MAP:
+            op = Op.create(OPTYPE_MAP[box.name])
         else:
             raise NotImplementedError
 
+        if box.is_dagger:
+            op = op.dagger
+
+        tk_circ.add_gate(op, i_qubits)
+
     circuit = Functor(ob=lambda x: x, ar=remove_ket1)(circuit)
-    for left, box, _ in circuit.layers:
+    for left, box, _ in circuit.inside:
         if isinstance(box, Ket):
             qubits = prepare_qubits(qubits, box, left.count(qubit))
-        elif isinstance(box, Bits) and not box.is_dagger:
+        elif isinstance(box, Digits) and box._dim == 2 and not box.is_dagger:
             if 1 in box.bitstring:
                 raise NotImplementedError
             bits = prepare_bits(bits, box, left.count(bit))
@@ -249,9 +304,10 @@ def to_tk(circuit):
                 continue  # bits and qubits live in different registers.
         elif isinstance(box, Scalar):
             tk_circ.scale(
-                box.array[0] if box.is_mixed else abs(box.array[0]) ** 2)
+                box.array if box.is_mixed else abs(box.array) ** 2)
         elif isinstance(box, ClassicalGate)\
-                or isinstance(box, Bits) and box.is_dagger:
+                or isinstance(box, Digits) and box._dim == 2\
+                and box.is_dagger:
             off = left.count(bit)
             right = Id(tk_circ.post_processing.cod[off + len(box.dom):])
             tk_circ.post_process(Id(bit ** off) @ box @ right)
@@ -266,8 +322,7 @@ def from_tk(tk_circuit):
     """
     Translates from tket to discopy.
     """
-    if not isinstance(tk_circuit, tk.Circuit):
-        raise TypeError(messages.type_err(tk.Circuit, tk_circuit))
+    assert_isinstance(tk_circuit, tk.Circuit)
     if not isinstance(tk_circuit, Circuit):
         tk_circuit = Circuit.upgrade(tk_circuit)
     n_bits = tk_circuit.n_bits - len(tk_circuit.post_selection)
@@ -277,13 +332,18 @@ def from_tk(tk_circuit):
         name = tk_gate.op.type.name
         if name == 'Rx':
             return Rx(tk_gate.op.params[0] / 2)
+        if name == 'Ry':
+            return Ry(tk_gate.op.params[0] / 2)
         if name == 'Rz':
             return Rz(tk_gate.op.params[0] / 2)
+        if name == 'CRx':
+            return CRx(tk_gate.op.params[0] / 2)
         if name == 'CRz':
             return CRz(tk_gate.op.params[0] / 2)
-        for gate in GATES:
-            if name == gate.name:
-                return gate
+        if name in GATES:
+            return GATES[name]
+        if name.removesuffix('dg') in GATES:
+            return GATES[name.removesuffix('dg')].dagger()
         raise NotImplementedError
 
     def make_units_adjacent(tk_gate):
@@ -293,20 +353,20 @@ def from_tk(tk_circuit):
             source, target = tk_qubit.index[0], offset + i + 1
             if source < target:
                 left, right = swaps.cod[:source], swaps.cod[target:]
-                swap = Id.swap(
+                swap = Diagram.swap(
                     swaps.cod[source:source + 1], swaps.cod[source + 1:target])
                 if source <= offset:
                     offset -= 1
             elif source > target:
                 left, right = swaps.cod[:target], swaps.cod[source + 1:]
-                swap = Id.swap(
+                swap = Diagram.swap(
                     swaps.cod[target: target + 1],
                     swaps.cod[target + 1: source + 1])
             else:  # pragma: no cover
                 continue  # units are adjacent already
             swaps = swaps >> Id(left) @ swap @ Id(right)
         return offset, swaps
-    circuit = Id(0).tensor(*(n_qubits * [Ket(0)] + n_bits * [Bits(0)]))
+    circuit = Id().tensor(*(n_qubits * [Ket(0)] + n_bits * [Bits(0)]))
     bras = {}
     for tk_gate in tk_circuit.get_commands():
         if tk_gate.op.type.name == "Measure":
@@ -317,7 +377,7 @@ def from_tk(tk_circuit):
                 continue  # post selection happens at the end
             box = Measure(destructive=False, override_bits=True)
             swaps = Id(circuit.cod[:offset + 1])
-            swaps = swaps @ Id.swap(
+            swaps = swaps @ Diagram.swap(
                 circuit.cod[offset + 1:n_qubits + bit_index],
                 circuit.cod[n_qubits:][bit_index: bit_index + 1])\
                 @ Id(circuit.cod[n_qubits + bit_index + 1:])
@@ -326,7 +386,7 @@ def from_tk(tk_circuit):
             offset, swaps = make_units_adjacent(tk_gate)
         left, right = swaps.cod[:offset], swaps.cod[offset + len(box.dom):]
         circuit = circuit >> swaps >> Id(left) @ box @ Id(right) >> swaps[::-1]
-    circuit = circuit >> Id(0).tensor(*(
+    circuit = circuit >> Id().tensor(*(
         Bra(bras[i]) if i in bras
         else Discard() if x.name == 'qubit' else Id(bit)
         for i, x in enumerate(circuit.cod)))
