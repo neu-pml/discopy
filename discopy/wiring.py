@@ -374,7 +374,7 @@ class WiringFunctor(Functor):
             ob = lambda t: PRO(len(t))
             ar = lambda f: Box(f.name, PRO(len(f.dom)), PRO(len(f.cod)),
                                data=f.data)
-        super().__init__(ob, ar, ob_factory=Ty, ar_factory=Box)
+        super().__init__(ob, ar, monoidal.Category(Ty, Diagram))
 
     def __call__(self, diagram):
         result = super().__call__(diagram)
