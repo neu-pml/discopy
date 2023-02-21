@@ -340,8 +340,8 @@ class Parallel(Diagram):
         self._cod = cod
 
 class Functor(monoidal.Functor):
-    def __init__(self, ob, ar, ob_factory=Ty, ar_factory=Box):
-        super().__init__(ob, ar, ob_factory, ar_factory)
+    def __init__(self, ob, ar, cod=monoidal.Category(Ty, Box)):
+        super().__init__(ob, ar, cod)
 
     def __functor_falg__(self, f):
         if isinstance(f, Id):
@@ -362,7 +362,7 @@ class Functor(monoidal.Functor):
 DIAGRAMMING_FUNCTOR = Functor(lambda t: t,
                               lambda f: monoidal.Box(f.name, f.dom, f.cod,
                                                      data=f.data),
-                              ob_factory=Ty, ar_factory=monoidal.Box)
+                              monoidal.Category(Ty, monoidal.Diagram))
 
 class WiringFunctor(Functor):
     def __init__(self, typed=False):
