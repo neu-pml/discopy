@@ -255,9 +255,11 @@ class Parallel(Diagram):
     def __init__(self, factors, dom=None, cod=None):
         self.factors = list(itertools.chain(*_flatten_factors(factors)))
         if dom is None:
-            dom = reduce_parallel((f.dom for f in self.factors), Ty())
+            dom = reduce_parallel((Ty(*f.dom.inside) for f in self.factors),
+                                  Ty())
         if cod is None:
-            cod = reduce_parallel((f.cod for f in self.factors), Ty())
+            cod = reduce_parallel((Ty(*f.cod.inside) for f in self.factors),
+                                  Ty())
         super().__init__(repr(self), dom, cod)
 
     def __repr__(self):
