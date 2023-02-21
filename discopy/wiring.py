@@ -108,7 +108,8 @@ class Diagram(monoidal.Box, Collapsible[monoidal.Diagram]):
         utils.assert_isinstance(other, self.factory)
         utils.assert_isinstance(self, other.factory)
 
-        factors = [f for f in (self,) + other if len(f.dom) or len(f.cod)]
+        factors = [f for f in itertools.chain((self,), other)
+                   if len(f.dom) or len(f.cod)]
         if not factors:
             return Id(Ty())
         if len(factors) == 1:
