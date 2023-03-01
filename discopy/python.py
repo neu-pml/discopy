@@ -33,7 +33,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from discopy.cat import Composable, assert_iscomposable
-from discopy.monoidal import Whiskerable
+from discopy.monoidal import PRO, Whiskerable
 
 Ty = tuple[type, ...]
 
@@ -184,11 +184,11 @@ class Function(Composable[Ty], Whiskerable):
         """
         assert_iscomposable(self, other)
 
-        if self.function == untuplify:
+        if self.inside == untuplify:
             return other
-        if other.function == untuplify:
+        if other.inside == untuplify:
             return self
-        function = compose(other.function, self.function)
+        function = compose(other.inside, self.inside)
         return Function(function, self.dom, other.cod)
 
     def __call__(self, *xs):
@@ -201,11 +201,11 @@ class Function(Composable[Ty], Whiskerable):
         Parameters:
             other : The other function to compose in sequence.
         """
-        if self.dom == PRO(0) and self.function == untuplify:
+        if self.dom == PRO(0) and self.inside == untuplify:
             return other
-        if other.dom == PRO(0) and other.function == untuplify:
+        if other.dom == PRO(0) and other.inside == untuplify:
             return self
-        prod = product((self.function, self.dom), (other.function, other.dom))
+        prod = product((self.inside, self.dom), (other.inside, other.dom))
         return Function(prod, self.dom + other.dom, self.cod + other.cod)
 
     @staticmethod
