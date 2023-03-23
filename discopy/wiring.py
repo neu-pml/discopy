@@ -30,8 +30,8 @@ from typing import Callable, Generic, Sequence, TypeVar
 T = TypeVar('T')
 
 from discopy import drawing, messages, monoidal, utils
-from discopy.cat import assert_iscomposable, AxiomError, factory
-from discopy.monoidal import PRO, Sum, Ty
+from discopy.cat import assert_iscomposable, AxiomError, Composable, factory
+from discopy.monoidal import PRO, Sum, Ty, Whiskerable
 
 def reduce_sequential(arrows):
     return functools.reduce(lambda f, g: f >> g, arrows)
@@ -74,30 +74,35 @@ class Collapsible(ABC, Generic[T]):
         return
 
 @factory
-class Diagram(monoidal.Box, Collapsible[monoidal.Diagram]):
+class Diagram(Composable[Ty], Whiskerable, Collapsible[monoidal.Diagram]):
     """
     Implements typed, directed wiring diagrams.
     """
+    dom: Ty
+    cod: Ty
+
+    def __init__(self, dom: Ty, cod: Ty):
+        self.dom, self.cod = dom, cod
+
     @staticmethod
     def id(dom):
         return Id(dom)
 
-    def then(self, *others: Diagram) -> Diagram:
+    def then(self, other: Diagram, *others: Diagram) -> Diagram:
         """
         Implements the sequential composition of wiring diagrams.
         """
-        for other in others:
-            utils.assert_isinstance(other, self.factory)
-            utils.assert_isinstance(self, other.factory)
+        utils.assert_isinstance(other, self.factory)
+        utils.assert_isinstance(self, other.factory)
+        if others:
+            return self.then(other).then(*others)
+        assert_iscomposable(self, other)
 
-        arrows = [f for f in (self,) + others if not isinstance(f, Id)]
-        if not arrows:
-            return Id(self.dom)
-        if len(arrows) == 1:
-            return arrows[0]
-        return Sequential(arrows)
+        if isinstance(other, Id):
+            return self
+        return Sequential([self, other])
 
-    def tensor(self, other: Diagram = None, *others: Diagram) -> Diagram:
+    def tensor(self, other: Diagram, *others: Diagram) -> Diagram:
         """
         Implements the tensor product of wiring diagrams.
         """
@@ -108,8 +113,7 @@ class Diagram(monoidal.Box, Collapsible[monoidal.Diagram]):
         utils.assert_isinstance(other, self.factory)
         utils.assert_isinstance(self, other.factory)
 
-        factors = [f for f in itertools.chain((self,), other)
-                   if len(f.dom) or len(f.cod)]
+        factors = [f for f in [self, other] if len(f.dom) or len(f.cod)]
         if not factors:
             return Id(Ty())
         if len(factors) == 1:
@@ -133,11 +137,11 @@ class Diagram(monoidal.Box, Collapsible[monoidal.Diagram]):
         DIAGRAMMING_FUNCTOR(self).draw(*args, **kwargs)
 
 class Id(Diagram):
-    """ Empty wiring diagram in a free dagger PROP. """
+    """ Empty wiring diagram. """
     def __init__(self, dom):
         if not isinstance(dom, Ty):
             raise TypeError(messages.type_err(Ty, dom))
-        super().__init__("Id(dom={})".format(dom), dom, dom)
+        super().__init__(dom, dom)
 
     def __repr__(self):
         return "Id(dom={})".format(repr(self.dom))
@@ -166,6 +170,9 @@ class Id(Diagram):
         self.merge_dom(wires)
 
 class Box(Diagram):
+    def __init__(self, name, dom, cod, data=None):
+        self.name, self.dom, self.cod, self.data = name, dom, cod, data
+
     """ Implements boxes in wiring diagrams. """
     def __repr__(self):
         return "Box({}, dom={}, cod={}, data={})".format(
@@ -203,10 +210,10 @@ class Sequential(Diagram):
             dom = self.inside[0].dom
         if cod is None:
             cod = self.inside[-1].cod
-        super().__init__(repr(self), dom, cod)
+        super().__init__(dom, cod)
 
     def __repr__(self):
-        return "Sequential(arrows={})".format(repr(self.inside))
+        return "Sequential(inside={})".format(repr(self.inside))
 
     def collapse(self, falg):
         return falg(Sequential([f.collapse(falg) for f in self.inside],
@@ -260,7 +267,7 @@ class Parallel(Diagram):
         if cod is None:
             cod = reduce_parallel((Ty(*f.cod.inside) for f in self.factors),
                                   Ty())
-        super().__init__(repr(self), dom, cod)
+        super().__init__(dom, cod)
 
     def __repr__(self):
         return "Parallel(factors={})".format(repr(self.factors))
