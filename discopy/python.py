@@ -110,7 +110,7 @@ class product:
             val = tuplify(func(*args[i:i+len(dom)]))
             result = result + val
             i += len(dom)
-        return result
+        return untuplify(result)
 
 class compose:
     def __init__(self, *functions):
