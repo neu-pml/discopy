@@ -132,8 +132,8 @@ class compose:
 
     def __call__(self, *values):
         for func in self.__wrapped__:
-            values = tuplify(func(*values))
-        return untuplify(*values)
+            values = func(*tuplify(values))
+        return values
 
 @dataclass
 class Function(Composable[Ty], Whiskerable):
