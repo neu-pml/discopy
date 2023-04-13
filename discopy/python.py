@@ -171,9 +171,9 @@ class Function(Composable[Ty], Whiskerable):
         The identity function on a given tuple of types :code:`dom`.
 
         Parameters:
-            dom (python.Ty) : The typle of types on which to take the identity.
+            dom (python.Ty) : The tuple of types on which to take the identity.
         """
-        return Function(untuplify, dom, dom)
+        return Function(lambda *xs: untuplify(xs), dom, dom)
 
     def then(self, other: Function) -> Function:
         """
