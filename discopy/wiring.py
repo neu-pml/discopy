@@ -227,15 +227,16 @@ class Sequential(Diagram):
         for f in self.inside:
             yield from f
 
-    def then(self, *others: Diagram) -> Diagram:
-        for other in others:
-            utils.assert_isinstance(other, self.factory)
-            utils.assert_isinstance(self, other.factory)
-        other, others = others[0], others[1:]
+    def then(self, other: Diagram, *others: Diagram) -> Diagram:
+        utils.assert_isinstance(other, self.factory)
+        utils.assert_isinstance(self, other.factory)
 
         last = self.inside[-1] >> other
         last = last.inside if isinstance(last, Sequential) else [last]
-        return Sequential(self.inside[:-1] + last).then(others)
+        seq = Sequential(self.inside[:-1] + last)
+        if others:
+            return seq.then(*others)
+        return seq
 
     def merge_wires(self):
         for f, g in zip(self.inside, self.inside[1:]):
@@ -254,7 +255,7 @@ class Sequential(Diagram):
 def _flatten_factors(factors):
     for f in factors:
         if isinstance(f, Id):
-            for ob in f.dom:
+            for ob in f.dom.inside:
                 yield Id(Ty(ob))
         elif isinstance(f, Parallel):
             yield f.factors
