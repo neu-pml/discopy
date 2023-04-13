@@ -267,11 +267,9 @@ class Parallel(Diagram):
     def __init__(self, factors, dom=None, cod=None):
         self.factors = list(itertools.chain(*_flatten_factors(factors)))
         if dom is None:
-            dom = reduce_parallel((Ty(*f.dom.inside) for f in self.factors),
-                                  Ty())
+            dom = reduce_parallel((f.dom for f in self.factors), Ty())
         if cod is None:
-            cod = reduce_parallel((Ty(*f.cod.inside) for f in self.factors),
-                                  Ty())
+            cod = reduce_parallel((f.cod for f in self.factors), Ty())
         super().__init__(dom, cod)
 
     def __repr__(self):
@@ -304,11 +302,12 @@ class Parallel(Diagram):
             j += 1
         return adjacency
 
-    def then(self, *others: Diagram) -> Diagram:
-        for other in others:
-            utils.assert_isinstance(other, self.factory)
-            utils.assert_isinstance(self, other.factory)
-        other, others = others[0], others[1:]
+    def then(self, other: Diagram, *others: Diagram) -> Diagram:
+        if others:
+            return self.then(other).then(*others)
+
+        utils.assert_isinstance(other, self.factory)
+        utils.assert_isinstance(self, other.factory)
         assert_iscomposable(self, other)
 
         if isinstance(other, Parallel):
@@ -339,7 +338,7 @@ class Parallel(Diagram):
         else:
             result = super().then(other)
 
-        return result.then(*others)
+        return result
 
     def merge_wires(self):
         dom, cod = Ty(), Ty()
