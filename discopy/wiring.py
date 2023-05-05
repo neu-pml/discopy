@@ -48,6 +48,8 @@ def _dagger_falg(diagram):
         else:
             name = diagram.name + '†'
         return Box(name, diagram.cod, diagram.dom, data=diagram.data)
+    if isinstance(diagram, Parallel):
+        return Parallel(diagram.inside, dom=diagram.cod, cod=diagram.dom)
     if isinstance(diagram, Sequential):
         return Sequential(reversed(diagram.inside), dom=diagram.cod,
                           cod=diagram.dom)
