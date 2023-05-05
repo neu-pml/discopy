@@ -152,12 +152,16 @@ class Id(Diagram):
     def __iter__(self):
         yield self
 
-    def then(self, *others: Diagram) -> Diagram:
-        return others[0].then(*others[1:])
+    def then(self, other: Diagram, *others: Diagram) -> Diagram:
+        if others:
+            return other.then(*others[1:])
+        return other
 
-    def tensor(self, other: Diagram = None, *others: Diagram) -> Diagram:
+    def tensor(self, other: Diagram, *others: Diagram) -> Diagram:
         if not self.dom:
-            return other.tensor(*others)
+            if others:
+                return other.tensor(*others)
+            return other
         if isinstance(other, Id):
             return Id(self.dom @ other.dom)
         return super().tensor(other)
