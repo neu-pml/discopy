@@ -110,7 +110,7 @@ class product:
             val = tuplify(func(*args[i:i+len(dom)]))
             result = result + val
             i += len(dom)
-        return result
+        return untuplify(result)
 
 class compose:
     def __init__(self, *functions):
@@ -132,8 +132,8 @@ class compose:
 
     def __call__(self, *values):
         for func in self.__wrapped__:
-            values = tuplify(func(*values))
-        return untuplify(*values)
+            values = func(*tuplify(values))
+        return values
 
 @dataclass
 class Function(Composable[Ty], Whiskerable):
@@ -171,9 +171,9 @@ class Function(Composable[Ty], Whiskerable):
         The identity function on a given tuple of types :code:`dom`.
 
         Parameters:
-            dom (python.Ty) : The typle of types on which to take the identity.
+            dom (python.Ty) : The tuple of types on which to take the identity.
         """
-        return Function(untuplify, dom, dom)
+        return Function(lambda *xs: untuplify(xs), dom, dom)
 
     def then(self, other: Function) -> Function:
         """

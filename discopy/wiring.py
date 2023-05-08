@@ -30,8 +30,8 @@ from typing import Callable, Generic, Sequence, TypeVar
 T = TypeVar('T')
 
 from discopy import drawing, messages, monoidal, utils
-from discopy.cat import assert_iscomposable, AxiomError, factory
-from discopy.monoidal import PRO, Sum, Ty
+from discopy.cat import assert_iscomposable, AxiomError, Composable, factory
+from discopy.monoidal import PRO, Sum, Ty, Whiskerable
 
 def reduce_sequential(arrows):
     return functools.reduce(lambda f, g: f >> g, arrows)
@@ -48,6 +48,8 @@ def _dagger_falg(diagram):
         else:
             name = diagram.name + '†'
         return Box(name, diagram.cod, diagram.dom, data=diagram.data)
+    if isinstance(diagram, Parallel):
+        return Parallel(diagram.inside, dom=diagram.cod, cod=diagram.dom)
     if isinstance(diagram, Sequential):
         return Sequential(reversed(diagram.inside), dom=diagram.cod,
                           cod=diagram.dom)
@@ -74,30 +76,35 @@ class Collapsible(ABC, Generic[T]):
         return
 
 @factory
-class Diagram(monoidal.Box, Collapsible[monoidal.Diagram]):
+class Diagram(Composable[Ty], Whiskerable, Collapsible[monoidal.Diagram]):
     """
     Implements typed, directed wiring diagrams.
     """
+    dom: Ty
+    cod: Ty
+
+    def __init__(self, dom: Ty, cod: Ty):
+        self.dom, self.cod = dom, cod
+
     @staticmethod
     def id(dom):
         return Id(dom)
 
-    def then(self, *others: Diagram) -> Diagram:
+    def then(self, other: Diagram, *others: Diagram) -> Diagram:
         """
         Implements the sequential composition of wiring diagrams.
         """
-        for other in others:
-            utils.assert_isinstance(other, self.factory)
-            utils.assert_isinstance(self, other.factory)
+        utils.assert_isinstance(other, self.factory)
+        utils.assert_isinstance(self, other.factory)
+        if others:
+            return self.then(other).then(*others)
+        assert_iscomposable(self, other)
 
-        arrows = [f for f in (self,) + others if not isinstance(f, Id)]
-        if not arrows:
-            return Id(self.dom)
-        if len(arrows) == 1:
-            return arrows[0]
-        return Sequential(arrows)
+        if isinstance(other, Id):
+            return self
+        return Sequential([self, other])
 
-    def tensor(self, other: Diagram = None, *others: Diagram) -> Diagram:
+    def tensor(self, other: Diagram, *others: Diagram) -> Diagram:
         """
         Implements the tensor product of wiring diagrams.
         """
@@ -108,8 +115,7 @@ class Diagram(monoidal.Box, Collapsible[monoidal.Diagram]):
         utils.assert_isinstance(other, self.factory)
         utils.assert_isinstance(self, other.factory)
 
-        factors = [f for f in itertools.chain((self,), other)
-                   if len(f.dom) or len(f.cod)]
+        factors = [f for f in [self, other] if len(f.dom) or len(f.cod)]
         if not factors:
             return Id(Ty())
         if len(factors) == 1:
@@ -133,11 +139,11 @@ class Diagram(monoidal.Box, Collapsible[monoidal.Diagram]):
         DIAGRAMMING_FUNCTOR(self).draw(*args, **kwargs)
 
 class Id(Diagram):
-    """ Empty wiring diagram in a free dagger PROP. """
+    """ Empty wiring diagram. """
     def __init__(self, dom):
         if not isinstance(dom, Ty):
             raise TypeError(messages.type_err(Ty, dom))
-        super().__init__("Id(dom={})".format(dom), dom, dom)
+        super().__init__(dom, dom)
 
     def __repr__(self):
         return "Id(dom={})".format(repr(self.dom))
@@ -148,12 +154,16 @@ class Id(Diagram):
     def __iter__(self):
         yield self
 
-    def then(self, *others: Diagram) -> Diagram:
-        return others[0].then(*others[1:])
+    def then(self, other: Diagram, *others: Diagram) -> Diagram:
+        if others:
+            return other.then(*others[1:])
+        return other
 
-    def tensor(self, other: Diagram = None, *others: Diagram) -> Diagram:
+    def tensor(self, other: Diagram, *others: Diagram) -> Diagram:
         if not self.dom:
-            return other.tensor(*others)
+            if others:
+                return other.tensor(*others)
+            return other
         if isinstance(other, Id):
             return Id(self.dom @ other.dom)
         return super().tensor(other)
@@ -166,6 +176,9 @@ class Id(Diagram):
         self.merge_dom(wires)
 
 class Box(Diagram):
+    def __init__(self, name, dom, cod, data=None):
+        self.name, self.dom, self.cod, self.data = name, dom, cod, data
+
     """ Implements boxes in wiring diagrams. """
     def __repr__(self):
         return "Box({}, dom={}, cod={}, data={})".format(
@@ -203,10 +216,10 @@ class Sequential(Diagram):
             dom = self.inside[0].dom
         if cod is None:
             cod = self.inside[-1].cod
-        super().__init__(repr(self), dom, cod)
+        super().__init__(dom, cod)
 
     def __repr__(self):
-        return "Sequential(arrows={})".format(repr(self.inside))
+        return "Sequential(inside={})".format(repr(self.inside))
 
     def collapse(self, falg):
         return falg(Sequential([f.collapse(falg) for f in self.inside],
@@ -216,15 +229,16 @@ class Sequential(Diagram):
         for f in self.inside:
             yield from f
 
-    def then(self, *others: Diagram) -> Diagram:
-        for other in others:
-            utils.assert_isinstance(other, self.factory)
-            utils.assert_isinstance(self, other.factory)
-        other, others = others[0], others[1:]
+    def then(self, other: Diagram, *others: Diagram) -> Diagram:
+        utils.assert_isinstance(other, self.factory)
+        utils.assert_isinstance(self, other.factory)
 
         last = self.inside[-1] >> other
         last = last.inside if isinstance(last, Sequential) else [last]
-        return Sequential(self.inside[:-1] + last).then(others)
+        seq = Sequential(self.inside[:-1] + last)
+        if others:
+            return seq.then(*others)
+        return seq
 
     def merge_wires(self):
         for f, g in zip(self.inside, self.inside[1:]):
@@ -243,7 +257,7 @@ class Sequential(Diagram):
 def _flatten_factors(factors):
     for f in factors:
         if isinstance(f, Id):
-            for ob in f.dom:
+            for ob in f.dom.inside:
                 yield Id(Ty(ob))
         elif isinstance(f, Parallel):
             yield f.factors
@@ -255,12 +269,10 @@ class Parallel(Diagram):
     def __init__(self, factors, dom=None, cod=None):
         self.factors = list(itertools.chain(*_flatten_factors(factors)))
         if dom is None:
-            dom = reduce_parallel((Ty(*f.dom.inside) for f in self.factors),
-                                  Ty())
+            dom = reduce_parallel((f.dom for f in self.factors), Ty())
         if cod is None:
-            cod = reduce_parallel((Ty(*f.cod.inside) for f in self.factors),
-                                  Ty())
-        super().__init__(repr(self), dom, cod)
+            cod = reduce_parallel((f.cod for f in self.factors), Ty())
+        super().__init__(dom, cod)
 
     def __repr__(self):
         return "Parallel(factors={})".format(repr(self.factors))
@@ -292,11 +304,12 @@ class Parallel(Diagram):
             j += 1
         return adjacency
 
-    def then(self, *others: Diagram) -> Diagram:
-        for other in others:
-            utils.assert_isinstance(other, self.factory)
-            utils.assert_isinstance(self, other.factory)
-        other, others = others[0], others[1:]
+    def then(self, other: Diagram, *others: Diagram) -> Diagram:
+        if others:
+            return self.then(other).then(*others)
+
+        utils.assert_isinstance(other, self.factory)
+        utils.assert_isinstance(self, other.factory)
         assert_iscomposable(self, other)
 
         if isinstance(other, Parallel):
@@ -327,7 +340,7 @@ class Parallel(Diagram):
         else:
             result = super().then(other)
 
-        return result.then(*others)
+        return result
 
     def merge_wires(self):
         dom, cod = Ty(), Ty()
@@ -345,13 +358,13 @@ class Functor(monoidal.Functor):
 
     def __functor_falg__(self, f):
         if isinstance(f, Id):
-            return self.ar_factory.id(self.ob[f.dom])
+            return self.cod.ar.id(self.ob[f.dom])
         if isinstance(f, Box):
             return self.ar[f]
         if isinstance(f, Sequential):
             return reduce_sequential(f.inside)
         if isinstance(f, Parallel):
-            return reduce_parallel(f.factors, self.ar_factory.id(self.ob[Ty()]))
+            return reduce_parallel(f.factors, self.cod.ar.id(self.ob[Ty()]))
         raise TypeError(messages.type_err(Diagram, f))
 
     def __call__(self, diagram):
