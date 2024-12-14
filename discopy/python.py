@@ -33,7 +33,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from discopy.cat import Composable, assert_iscomposable
-from discopy.monoidal import Whiskerable
+from discopy.monoidal import PRO, Whiskerable
 
 Ty = tuple[type, ...]
 
@@ -82,6 +82,58 @@ def is_tuple(typ: type) -> bool:
     """
     return getattr(typ, "__origin__", typ) is tuple
 
+class product:
+    def __init__(self, *functions):
+        if not functions:
+            raise TypeError(repr(type(self).__name__) +
+                            ' needs at least one argument')
+
+        _functions = []
+        doms = []
+        for function, dom in functions:
+            if not callable(function):
+                raise TypeError(repr(type(self).__name__) +
+                                ' arguments must be callable')
+            if isinstance(function, product):
+                _functions = _functions + function.__wrapped__
+                doms = doms + function._doms
+            else:
+                _functions.append(function)
+                doms.append(dom)
+        self.__wrapped__ = _functions
+        self._doms = doms
+
+    def __call__(self, *args):
+        i = 0
+        result = ()
+        for func, dom in zip(self.__wrapped__, self._doms):
+            val = tuplify(func(*args[i:i+len(dom)]))
+            result = result + val
+            i += len(dom)
+        return untuplify(result)
+
+class compose:
+    def __init__(self, *functions):
+        if not functions:
+            raise TypeError(repr(type(self).__name__) +
+                            ' needs at least one argument')
+
+        _functions = []
+        for function in reversed(functions):
+            if not callable(function):
+                raise TypeError(repr(type(self).__name__) +
+                                ' arguments must be callable')
+
+            if isinstance(function, compose):
+                _functions = _functions + function.__wrapped__
+            else:
+                _functions.append(function)
+        self.__wrapped__ = _functions
+
+    def __call__(self, *values):
+        for func in self.__wrapped__:
+            values = func(*tuplify(values))
+        return values
 
 @dataclass
 class Function(Composable[Ty], Whiskerable):
@@ -119,7 +171,7 @@ class Function(Composable[Ty], Whiskerable):
         The identity function on a given tuple of types :code:`dom`.
 
         Parameters:
-            dom (python.Ty) : The typle of types on which to take the identity.
+            dom (python.Ty) : The tuple of types on which to take the identity.
         """
         return Function(lambda *xs: untuplify(xs), dom, dom)
 
@@ -131,8 +183,13 @@ class Function(Composable[Ty], Whiskerable):
             other : The other function to compose in sequence.
         """
         assert_iscomposable(self, other)
-        return Function(
-            lambda *args: other(*tuplify(self(*args))), self.dom, other.cod)
+
+        if self.inside == untuplify:
+            return other
+        if other.inside == untuplify:
+            return self
+        function = compose(other.inside, self.inside)
+        return Function(function, self.dom, other.cod)
 
     def __call__(self, *xs):
         return self.inside(*xs)
@@ -144,10 +201,12 @@ class Function(Composable[Ty], Whiskerable):
         Parameters:
             other : The other function to compose in sequence.
         """
-        def inside(*xs):
-            left, right = xs[:len(self.dom)], xs[len(self.dom):]
-            return untuplify(tuplify(self(*left)) + tuplify(other(*right)))
-        return Function(inside, self.dom + other.dom, self.cod + other.cod)
+        if self.dom == PRO(0) and self.inside == untuplify:
+            return other
+        if other.dom == PRO(0) and other.inside == untuplify:
+            return self
+        prod = product((self.inside, self.dom), (other.inside, other.dom))
+        return Function(prod, self.dom + other.dom, self.cod + other.cod)
 
     @staticmethod
     def swap(x: Ty, y: Ty) -> Function:

@@ -55,7 +55,6 @@ from discopy import symmetric, monoidal, frobenius
 from discopy.cat import factory
 from discopy.monoidal import Ty, assert_isatomic
 
-
 @factory
 class Diagram(symmetric.Diagram):
     """
@@ -170,6 +169,5 @@ class Functor(symmetric.Functor):
         if isinstance(other, Copy):
             return self.cod.ar.copy(self(other.dom), len(other.cod))
         return super().__call__(other)
-
 
 Id = Diagram.id
